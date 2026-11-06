@@ -1,2 +1,4 @@
 """BookTek : gestion de bibliothèque personnelle par lecture d'ISBN."""
-__version__ = "1.0.0"
+#: Version de l'application. À incrémenter avant chaque release : la mise à
+#: jour automatique compare cette valeur au tag de la dernière release GitHub.
+__version__ = "1.1.0"

@@ -28,7 +28,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import __version__, bkc_import, lookup
+from . import __version__, bkc_import, lookup, updater
 from .db import FIELDS, Library
 from .isbn import normalize
 
@@ -257,7 +257,9 @@ class App(tk.Tk):
     * ``mode`` : mode de scan (``"auto"``, ``"add"`` ou ``"return"``) ;
     * ``q`` : file des callbacks envoyés par les threads (voir :meth:`post`) ;
     * ``pending`` : ISBN en cours de recherche en ligne, pour ignorer un
-      double scan du même livre pendant la recherche.
+      double scan du même livre pendant la recherche ;
+    * ``update_ready`` : :class:`~booktek.updater.Release` téléchargée et
+      prête à installer, ou ``None``.
     """
 
     def __init__(self, db_path):
@@ -269,9 +271,12 @@ class App(tk.Tk):
         self.db_path = db_path
         self.q = queue.Queue()
         self.pending = set()  # ISBN en cours de recherche en ligne
+        self.update_ready = None
+        self._update_busy = False  # une vérification de mise à jour est en cours
         self._build()
         self.refresh()
         self.after(100, self._poll)
+        self.after(3000, self.check_updates_auto)  # laisse l'interface s'afficher d'abord
         self.set_status(f"Prêt. Scannez un ISBN. (Base : {db_path})", "info")
 
     # ---- construction ---------------------------------------------------
@@ -290,6 +295,10 @@ class App(tk.Tk):
         m.add_separator()
         m.add_command(label="Quitter", command=self.destroy)
         menubar.add_cascade(label="Fichier", menu=m)
+        m = tk.Menu(menubar, tearoff=False)
+        m.add_command(label="Rechercher une mise à jour", command=self.check_updates_manual)
+        m.add_command(label="À propos de BookTek", command=self.about)
+        menubar.add_cascade(label="Aide", menu=m)
         self.config(menu=menubar)
 
         top = ttk.Frame(self, padding=(12, 10, 12, 4))
@@ -306,6 +315,11 @@ class App(tk.Tk):
         for val, txt in (("auto", "Automatique"), ("add", "Ajout rapide"), ("return", "Retour rapide")):
             ttk.Radiobutton(modes, text=txt, value=val, variable=self.mode,
                             command=lambda: self.scan.focus_set()).pack(side="left", padx=4)
+
+        # Bouton affiché seulement quand une mise à jour est téléchargée (voir _update_done).
+        self.update_btn = tk.Button(top, text="Mettre à jour", command=self.install_update, bg=COLORS["info"],
+                                    fg="white", activebackground=COLORS["ok"], activeforeground="white",
+                                    font=("Segoe UI", 10, "bold"), relief="flat", padx=10, pady=4, cursor="hand2")
 
         self.status = tk.Label(self, anchor="w", font=("Segoe UI", 12, "bold"), padx=14, pady=4)
         self.status.pack(fill="x")
@@ -728,7 +742,129 @@ class App(tk.Tk):
         self.set_status(f"Exporté : {path}", "ok")
 
 
+    # ---- mises à jour ------------------------------------------------------
+    def check_updates_auto(self):
+        """Vérification à chaud silencieuse, puis toutes les :data:`updater.CHECK_INTERVAL` secondes."""
+        self._check_updates(manual=False)
+        self.after(updater.CHECK_INTERVAL * 1000, self.check_updates_auto)
+
+    def check_updates_manual(self):
+        """Menu Aide > Rechercher une mise à jour : comme la vérification auto, mais avec retours visibles."""
+        self._check_updates(manual=True)
+
+    def _check_updates(self, manual):
+        """Lance :meth:`_update_worker` dans un thread (une seule vérification à la fois)."""
+        if self._update_busy:
+            if manual:
+                self.set_status("Recherche de mise à jour déjà en cours…", "info")
+            return
+        self._update_busy = True
+        if manual:
+            self.set_status("Recherche de mise à jour…", "info")
+        threading.Thread(target=self._update_worker, args=(manual,), daemon=True).start()
+
+    def _update_worker(self, manual):
+        """Thread : interroge GitHub et télécharge la nouvelle version si besoin.
+
+        N'accède jamais à l'interface directement : les résultats passent par
+        :meth:`post`. En vérification automatique, la progression n'est pas
+        affichée pour ne pas masquer les messages de scan.
+        """
+        try:
+            rel = updater.latest_release()
+            if rel is None or not updater.is_newer(rel.version):
+                self.post(self._update_done, None, None, manual)
+                return
+            if not updater.can_self_update():
+                self.post(self._update_done, rel, "manual-install", manual)
+                return
+            if updater.pending_version() != rel.version:
+                step = [-1]
+
+                def progress(received, total):
+                    pct = received * 100 // total if total else 0
+                    if manual and pct // 10 != step[0]:
+                        step[0] = pct // 10
+                        self.post(self.set_status, f"Téléchargement de la version {rel.version} : {pct} %", "info")
+
+                updater.download(rel, progress)
+            self.post(self._update_done, rel, "ready", manual)
+        except Exception as exc:
+            self.post(self._update_failed, str(exc), manual)
+
+    def _update_done(self, rel, state, manual):
+        """Résultat de la vérification, dans le thread de l'interface.
+
+        ``state`` vaut ``None`` (déjà à jour), ``"ready"`` (téléchargée,
+        installable) ou ``"manual-install"`` (exécution depuis les sources ou
+        dossier protégé : l'utilisateur doit mettre à jour lui-même).
+        """
+        self._update_busy = False
+        if rel is None:
+            if manual:
+                self.set_status(f"BookTek est à jour (version {__version__}).", "ok")
+            return
+        if state == "manual-install":
+            self.set_status(f"La version {rel.version} de BookTek est disponible.", "info")
+            if manual:
+                messagebox.showinfo(
+                    "Mise à jour disponible",
+                    f"La version {rel.version} est disponible :\n{rel.page}\n\n"
+                    "Elle ne peut pas être installée automatiquement ici (lancement depuis les sources, "
+                    "ou dossier de l'application protégé en écriture).", parent=self)
+            return
+        self.update_ready = rel
+        self.update_btn.config(text=f"⬆ Mettre à jour vers {rel.version}")
+        self.update_btn.pack(side="right")
+        self.set_status(f"Mise à jour {rel.version} prête : elle sera installée au prochain démarrage, "
+                        "ou cliquez sur « Mettre à jour ».", "info")
+        if manual:
+            self.install_update()
+
+    def _update_failed(self, message, manual):
+        """Échec de vérification ou de téléchargement : signalé seulement si demandé par l'utilisateur."""
+        self._update_busy = False
+        if manual:
+            self.set_status(f"Mise à jour impossible : {message}", "err")
+
+    def install_update(self):
+        """Bouton « Mettre à jour » : confirme, installe la version téléchargée et redémarre."""
+        rel = self.update_ready
+        if not rel:
+            return
+        notes = rel.notes.strip()
+        if len(notes) > 700:
+            notes = notes[:700].rstrip() + "…"
+        if not messagebox.askyesno(
+                "Mettre à jour BookTek",
+                f"Installer la version {rel.version} (actuelle : {__version__}) ?\n\n"
+                f"{notes}\n\nBookTek va redémarrer.", parent=self):
+            self.refocus()
+            return
+        try:
+            updater.apply_and_restart()
+        except updater.UpdateError as exc:
+            messagebox.showerror("Mise à jour impossible", str(exc), parent=self)
+            return
+        self.lib.con.close()
+        self.destroy()
+
+    def about(self):
+        """Menu Aide > À propos : version, dépôt et emplacement de la base."""
+        messagebox.showinfo(
+            "À propos de BookTek",
+            f"BookTek {__version__}\nGestion de bibliothèque par lecture d'ISBN.\n\n"
+            f"https://github.com/{updater.REPO}\n\nBase de données :\n{self.db_path}", parent=self)
+
+
 def main():
-    """Point d'entrée : ouvre la base (voir :func:`data_dir`) et lance l'interface."""
+    """Point d'entrée.
+
+    Installe d'abord une éventuelle mise à jour téléchargée lors d'une
+    session précédente (la nouvelle version est alors lancée et on quitte),
+    puis ouvre la base (voir :func:`data_dir`) et lance l'interface.
+    """
+    if updater.install_pending_on_startup():
+        return
     db_path = os.path.join(data_dir(), "booktek.db")
     App(db_path).mainloop()

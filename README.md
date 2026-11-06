@@ -1,56 +1,36 @@
 # BookTek
 
-Gestion de bibliothèque personnelle sous Windows, pilotée par la lecture d'ISBN (douchette code-barres ou clavier) : enregistrement des livres, prêts, retours et suivi des retards.
+Gestion de bibliothèque personnelle sous Windows, pilotée par la lecture d'ISBN : on scanne le code-barres d'un livre pour l'enregistrer, le prêter ou noter son retour.
 
-## Fonctionnalités
+- **Scan d'ISBN** avec une douchette code-barres ou au clavier.
+- **Fiches remplies automatiquement** grâce aux catalogues en ligne (BnF, Google Books, Open Library).
+- **Prêts** : emprunteur, date de retour prévue, retards signalés, historique.
+- **Import** d'une collection *Book Collector* (`.bkc`), **export** CSV pour Excel.
+- **Mise à jour automatique** depuis ce dépôt.
 
-- **Scan d'ISBN** : ISBN-10, ISBN-13 avec ou sans tirets, codes EAN avec extension de prix. La clé de contrôle est vérifiée.
-- **Trois modes de scan** :
-  - *Automatique* : un livre inconnu est recherché en ligne puis enregistré après validation ; un livre connu ouvre sa fiche avec **Prêter** ou **Enregistrer le retour**.
-  - *Ajout rapide* : chaque scan enregistre le livre directement, pour saisir une étagère entière.
-  - *Retour rapide* : chaque scan clôt le prêt en cours.
-- **Recherche en ligne** des informations (titre, auteurs, éditeur, année, pages), dans l'ordre :
-  1. catalogue de la BnF (prioritaire pour les ISBN français 978-2 / 979-10, avec repli sur l'ISBN-10 pour les anciennes notices) ;
-  2. Google Books (souvent limité sans clé d'API : erreur 429) ;
-  3. Open Library.
-- **Prêts** : emprunteur (avec mémoire des noms déjà saisis), date de retour prévue (21 jours par défaut), retards en rouge, historique complet.
-- **Import** d'une collection Collectorz *Book Collector* (`.bkc`) : ISBN et titre de chaque fiche, puis complément automatique via Internet.
-- **Export CSV** compatible Excel (séparateur `;`).
+## Installation
 
-Les données sont stockées dans `booktek.db` (SQLite), à côté de l'exécutable, ou dans `%APPDATA%\BookTek` si ce dossier n'est pas accessible en écriture.
+1. Télécharger `BookTek.exe` depuis la [dernière release](https://github.com/HTModeLia/BookTek/releases/latest).
+2. Le placer dans un dossier personnel (par exemple `Documents\BookTek`), puis le lancer.
 
-## Utilisation
+Aucune installation n'est nécessaire. La base de données `booktek.db` est créée à côté de l'exécutable.
 
-Lancer `BookTek.exe`, ou depuis les sources :
+## Documentation
 
-```
-python main.py
-```
+| Document | Pour qui | Contenu |
+|---|---|---|
+| [Guide d'utilisation](docs/guide-utilisateur.md) | Utilisateurs | Scanner, prêter, importer, sauvegarder, dépannage |
+| [Mises à jour](docs/mises-a-jour.md) | Utilisateurs et développeurs | Fonctionnement de la mise à jour automatique |
+| [Architecture](docs/architecture.md) | Développeurs | Modules, base de données, threads, sources en ligne, format `.bkc` |
+| [Publier une version](docs/publier-une-version.md) | Mainteneurs | Procédure de release |
+| [Historique des versions](CHANGELOG.md) | Tous | Nouveautés de chaque version |
 
-Seule la bibliothèque standard de Python est nécessaire (Python 3.10 ou plus récent, Tkinter inclus).
+## Développement
 
-## Tests
+Python 3.10 ou plus récent ; seule la bibliothèque standard est utilisée (Tkinter, SQLite, urllib).
 
 ```
-python -m unittest discover -s tests
+python main.py                              # lancer depuis les sources
+python -m unittest discover -s tests        # tests
+python tools/release.py --dry-run           # construire l'exe sans publier
 ```
-
-## Construire l'exécutable
-
-```
-pip install pyinstaller
-python -m PyInstaller --noconfirm --onefile --windowed --name BookTek main.py
-```
-
-L'exécutable est généré dans `dist\BookTek.exe`.
-
-## Structure
-
-| Fichier | Rôle |
-|---|---|
-| `booktek/app.py` | Interface graphique (Tkinter) |
-| `booktek/db.py` | Base SQLite : livres et prêts |
-| `booktek/isbn.py` | Validation et normalisation des ISBN |
-| `booktek/lookup.py` | Recherche en ligne (BnF, Google Books, Open Library) |
-| `booktek/bkc_import.py` | Import des fichiers Book Collector `.bkc` |
-| `tests/test_core.py` | Tests unitaires |

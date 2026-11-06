@@ -53,6 +53,7 @@ class LibraryTest(unittest.TestCase):
 
     def setUp(self):
         self.lib = Library(":memory:")
+        self.addCleanup(self.lib.con.close)
         self.bid = self.lib.add_book({"isbn": "9782290254738", "title": "Bridgerton 1&2"})
 
     def test_lend_and_return(self):
