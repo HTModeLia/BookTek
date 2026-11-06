@@ -1,3 +1,12 @@
+"""Tests unitaires de BookTek (sans réseau ni interface graphique).
+
+Lancement : ``python -m unittest discover -s tests``
+
+Le test d'import ``.bkc`` utilise le fichier d'exemple
+``books_pour_aurelien.bkc`` à la racine du projet. Ce fichier contient des
+données personnelles et n'est pas versionné : le test est sauté s'il est
+absent.
+"""
 import os
 import sys
 import tempfile
@@ -13,6 +22,8 @@ from booktek.lookup import _bnf_person  # noqa: E402
 
 
 class IsbnTest(unittest.TestCase):
+    """Normalisation et conversion des ISBN, analyse des noms d'auteurs BnF."""
+
     def test_isbn13(self):
         self.assertEqual(normalize("978-2-290-25473-8"), "9782290254738")
 
@@ -38,6 +49,8 @@ class IsbnTest(unittest.TestCase):
 
 
 class LibraryTest(unittest.TestCase):
+    """Base SQLite en mémoire : prêts, retours, recherche, complément des fiches."""
+
     def setUp(self):
         self.lib = Library(":memory:")
         self.bid = self.lib.add_book({"isbn": "9782290254738", "title": "Bridgerton 1&2"})
@@ -67,6 +80,8 @@ class LibraryTest(unittest.TestCase):
 
 
 class BkcImportTest(unittest.TestCase):
+    """Lecture des fichiers Book Collector (.bkc)."""
+
     PATH = os.path.join(ROOT, "books_pour_aurelien.bkc")
 
     @unittest.skipUnless(os.path.exists(PATH), "fichier exemple absent")

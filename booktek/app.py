@@ -1,4 +1,24 @@
-"""Interface graphique BookTek (Tkinter)."""
+"""Interface graphique BookTek (Tkinter).
+
+Organisation :
+
+* :class:`App` : fenêtre principale. En haut, le champ de scan et le choix du
+  mode ; en dessous, la ligne de statut, puis trois onglets (bibliothèque,
+  prêts en cours, historique) et un pied de page avec les compteurs.
+* :class:`Dialog` et ses sous-classes : fenêtres modales. ``show()`` bloque
+  jusqu'à leur fermeture et retourne ``result`` (``None`` si annulé).
+
+Lecture d'ISBN : une douchette code-barres se comporte comme un clavier qui
+tape les chiffres puis Entrée. Le champ de scan garde donc le focus autant que
+possible (voir :meth:`App.refocus`, raccourci F2) et tout le traitement part
+de :meth:`App.on_scan`.
+
+Threads : les recherches en ligne (:mod:`booktek.lookup`) peuvent prendre
+plusieurs secondes et tournent dans des threads secondaires. Ni Tkinter ni la
+connexion SQLite ne doivent être utilisés hors du thread principal : les
+threads déposent donc leurs résultats dans une file via :meth:`App.post`, que
+:meth:`App._poll` vide toutes les 100 ms depuis le thread de l'interface.
+"""
 import csv
 import datetime as dt
 import os
@@ -12,11 +32,14 @@ from . import __version__, bkc_import, lookup
 from .db import FIELDS, Library
 from .isbn import normalize
 
+#: Durée de prêt par défaut, en jours (date de retour proposée).
 LOAN_DAYS = 21
+#: Libellés français des champs de :data:`booktek.db.FIELDS`.
 LABELS = {
     "isbn": "ISBN", "title": "Titre", "authors": "Auteur(s)", "publisher": "Éditeur",
     "year": "Année", "pages": "Pages", "location": "Emplacement", "notes": "Notes",
 }
+#: Couleurs de la ligne de statut selon le type de message.
 COLORS = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8"}
 
 try:
@@ -26,7 +49,12 @@ except ImportError:  # hors Windows
 
 
 def data_dir():
-    """Dossier de la base : à côté de l'exe s'il est inscriptible, sinon %APPDATA%\\BookTek."""
+    """Dossier de la base : à côté de l'exe s'il est inscriptible, sinon %APPDATA%\\BookTek.
+
+    Une fois empaqueté par PyInstaller (``sys.frozen``), ``sys.executable``
+    est l'exe lui-même ; depuis les sources, on prend le dossier du script
+    lancé (``main.py``).
+    """
     base = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(sys.argv[0]))
     if os.access(base, os.W_OK):
         return base
@@ -36,10 +64,12 @@ def data_dir():
 
 
 def fmt_date(iso):
+    """Date ISO de la base -> affichage ``JJ/MM/AAAA`` (chaîne vide si absente)."""
     return dt.date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else ""
 
 
 def parse_date(text):
+    """Saisie ``JJ/MM/AAAA`` -> :class:`datetime.date`. Lève :class:`ValueError` si invalide."""
     return dt.datetime.strptime(text.strip(), "%d/%m/%Y").date()
 
 
@@ -47,6 +77,12 @@ def parse_date(text):
 # Boîtes de dialogue
 # ---------------------------------------------------------------------------
 class Dialog(tk.Toplevel):
+    """Base des fenêtres modales.
+
+    Les sous-classes placent leurs widgets dans ``self.body`` et renseignent
+    ``self.result`` avant d'appeler ``destroy()``. Échap ferme sans résultat.
+    """
+
     def __init__(self, master, title):
         super().__init__(master)
         self.title(title)
@@ -58,6 +94,10 @@ class Dialog(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
 
     def show(self):
+        """Centre la fenêtre sur la fenêtre parente, la rend modale et attend sa fermeture.
+
+        Retourne ``self.result`` (``None`` si l'utilisateur a annulé).
+        """
         self.update_idletasks()
         m = self.master
         x = m.winfo_rootx() + (m.winfo_width() - self.winfo_width()) // 2
@@ -69,7 +109,11 @@ class Dialog(tk.Toplevel):
 
 
 class BookForm(Dialog):
-    """Saisie / modification d'une fiche livre."""
+    """Saisie / modification d'une fiche livre.
+
+    ``data`` pré-remplit le formulaire (dict ou ligne de base). ``result``
+    est un dict des champs de :data:`FIELDS`, avec l'ISBN normalisé.
+    """
 
     def __init__(self, master, data, title="Livre"):
         super().__init__(master, title)
@@ -88,11 +132,16 @@ class BookForm(Dialog):
         bar.grid(row=len(FIELDS), column=0, columnspan=2, pady=(10, 0), sticky="e")
         ttk.Button(bar, text="Enregistrer", command=self.save).pack(side="left", padx=4)
         ttk.Button(bar, text="Annuler", command=self.destroy).pack(side="left")
+        # Entrée valide le formulaire, sauf dans le champ Notes (multiligne).
         self.bind("<Return>", lambda e: self.save() if not isinstance(e.widget, tk.Text) else None)
+        # Focus sur le premier champ utile : titre si l'ISBN est connu mais pas
+        # le titre (introuvable en ligne), emplacement si la fiche est déjà
+        # remplie, ISBN pour une saisie entièrement manuelle.
         focus = "title" if data.get("isbn") and not data.get("title") else "location" if data.get("title") else "isbn"
         self.vars[focus].focus_set()
 
     def save(self):
+        """Valide la saisie (ISBN facultatif mais valide, titre obligatoire) et ferme."""
         out = {f: (w.get("1.0", "end").strip() if isinstance(w, tk.Text) else w.get().strip())
                for f, w in self.vars.items()}
         if out["isbn"]:
@@ -109,6 +158,13 @@ class BookForm(Dialog):
 
 
 class LendDialog(Dialog):
+    """Saisie d'un prêt : emprunteur et date de retour prévue.
+
+    ``borrowers`` alimente la liste déroulante (emprunteurs déjà connus).
+    ``result`` est un tuple ``(emprunteur, date_retour_iso_ou_None)`` ;
+    vider le champ date crée un prêt sans échéance.
+    """
+
     def __init__(self, master, book, borrowers):
         super().__init__(master, "Prêter un livre")
         ttk.Label(self.body, text=book["title"], font=("Segoe UI", 11, "bold"), wraplength=380).grid(
@@ -128,6 +184,7 @@ class LendDialog(Dialog):
         self.who.focus_set()
 
     def ok(self):
+        """Valide l'emprunteur (obligatoire) et la date (facultative, JJ/MM/AAAA) puis ferme."""
         who = self.who.get().strip()
         if not who:
             messagebox.showerror("Emprunteur manquant", "Indiquez le nom de l'emprunteur.", parent=self)
@@ -145,7 +202,17 @@ class LendDialog(Dialog):
 
 
 class BookCard(Dialog):
-    """Fiche d'un livre scanné, avec les actions possibles."""
+    """Fiche d'un livre connu, avec les actions possibles.
+
+    Affiche le livre et son état (disponible, prêté, en retard). ``result``
+    vaut ``"lend"``, ``"return"``, ``"edit"`` ou ``None`` (fermé) ; c'est
+    l'appelant (:meth:`App.book_actions`) qui exécute l'action.
+
+    Entrée n'est volontairement pas liée : une douchette envoie Entrée après
+    chaque code, et un scan fait par erreur pendant que la fiche est ouverte
+    ne doit pas déclencher un retour. L'action principale a le focus, la
+    barre d'espace la déclenche.
+    """
 
     def __init__(self, master, book, loan):
         super().__init__(master, "Livre")
@@ -173,6 +240,7 @@ class BookCard(Dialog):
         main.focus_set()  # Espace = action principale
 
     def choose(self, action):
+        """Mémorise l'action choisie et ferme la fiche."""
         self.result = action
         self.destroy()
 
@@ -181,6 +249,17 @@ class BookCard(Dialog):
 # Fenêtre principale
 # ---------------------------------------------------------------------------
 class App(tk.Tk):
+    """Fenêtre principale de BookTek.
+
+    Attributs principaux :
+
+    * ``lib`` : la :class:`~booktek.db.Library` ouverte sur ``db_path`` ;
+    * ``mode`` : mode de scan (``"auto"``, ``"add"`` ou ``"return"``) ;
+    * ``q`` : file des callbacks envoyés par les threads (voir :meth:`post`) ;
+    * ``pending`` : ISBN en cours de recherche en ligne, pour ignorer un
+      double scan du même livre pendant la recherche.
+    """
+
     def __init__(self, db_path):
         super().__init__()
         self.title(f"BookTek {__version__}")
@@ -197,6 +276,7 @@ class App(tk.Tk):
 
     # ---- construction ---------------------------------------------------
     def _build(self):
+        """Crée le menu, la zone de scan, la ligne de statut, les onglets et le pied de page."""
         style = ttk.Style(self)
         if "vista" in style.theme_names():
             style.theme_use("vista")
@@ -233,7 +313,7 @@ class App(tk.Tk):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=(4, 0))
 
-        # Onglet bibliothèque
+        # Onglet bibliothèque. Les lignes ont pour iid l'id du livre en base.
         lib = ttk.Frame(self.nb, padding=6)
         self.nb.add(lib, text="Bibliothèque")
         bar = ttk.Frame(lib)
@@ -250,7 +330,7 @@ class App(tk.Tk):
                                       ("location", "Emplacement", 110), ("status", "Statut", 170)))
         self.books.bind("<Double-1>", lambda e: self.open_selected())
 
-        # Onglet prêts en cours
+        # Onglet prêts en cours. iid = id du livre (un seul prêt en cours par livre).
         loans = ttk.Frame(self.nb, padding=6)
         self.nb.add(loans, text="Prêts en cours")
         bar = ttk.Frame(loans)
@@ -272,6 +352,11 @@ class App(tk.Tk):
         self.scan.focus_set()
 
     def _tree(self, parent, cols):
+        """Crée un tableau (Treeview + barre de défilement) dans ``parent``.
+
+        ``cols`` est une suite de ``(clé, en-tête, largeur)``. Un clic sur un
+        en-tête trie la colonne.
+        """
         frame = ttk.Frame(parent)
         frame.pack(fill="both", expand=True)
         tree = ttk.Treeview(frame, columns=[c[0] for c in cols], show="headings", selectmode="browse")
@@ -286,6 +371,12 @@ class App(tk.Tk):
 
     @staticmethod
     def _sort(tree, col):
+        """Trie ``tree`` sur ``col`` (texte, sans casse) ; un 2e clic inverse l'ordre.
+
+        Le dernier tri est mémorisé sur le widget (``tree._sort_state``). Il
+        n'est pas réappliqué après un rafraîchissement, qui revient à l'ordre
+        de la base.
+        """
         desc = getattr(tree, "_sort_state", None) == (col, False)
         rows = [(tree.set(i, col).lower(), i) for i in tree.get_children("")]
         rows.sort(reverse=desc)
@@ -295,15 +386,26 @@ class App(tk.Tk):
 
     # ---- utilitaires ----------------------------------------------------
     def set_status(self, msg, kind="info"):
+        """Affiche ``msg`` dans la ligne de statut, coloré selon ``kind`` (clé de :data:`COLORS`).
+
+        Les erreurs émettent aussi un bip système, pour qu'on les remarque
+        sans regarder l'écran pendant une série de scans.
+        """
         self.status.config(text=msg, fg=COLORS[kind])
         if kind == "err" and winsound:
             winsound.MessageBeep(winsound.MB_ICONHAND)
 
     def post(self, fn, *args):
-        """Appelé depuis un thread : exécute fn(*args) dans le thread de l'interface."""
+        """Planifie ``fn(*args)`` dans le thread de l'interface.
+
+        C'est la seule méthode d'``App`` qu'un thread secondaire a le droit
+        d'appeler : :class:`queue.Queue` est sûre entre threads, contrairement
+        à Tkinter et SQLite.
+        """
         self.q.put((fn, args))
 
     def _poll(self):
+        """Exécute les callbacks en attente dans :attr:`q`, puis se replanifie dans 100 ms."""
         try:
             while True:
                 fn, args = self.q.get_nowait()
@@ -313,10 +415,17 @@ class App(tk.Tk):
         self.after(100, self._poll)
 
     def refocus(self):
+        """Redonne le focus au champ de scan, pour que le prochain code lu y arrive."""
         self.scan.focus_set()
 
     # ---- rafraîchissement -----------------------------------------------
     def refresh(self):
+        """Recharge les trois onglets et les compteurs depuis la base.
+
+        Appelé après chaque modification. Le volume d'une bibliothèque
+        personnelle (quelques milliers de livres) permet de tout recharger
+        plutôt que de mettre à jour ligne par ligne.
+        """
         self.refresh_books()
         today = dt.date.today()
         self.loans.delete(*self.loans.get_children())
@@ -334,6 +443,7 @@ class App(tk.Tk):
         self.nb.tab(1, text=f"Prêts en cours ({s['lent']})")
 
     def refresh_books(self):
+        """Recharge l'onglet Bibliothèque selon le texte de recherche (appelé à chaque frappe)."""
         self.books.delete(*self.books.get_children())
         for r in self.lib.search(self.search.get()):
             status = f"Prêté à {r['borrower']}" if r["borrower"] else "Disponible"
@@ -341,6 +451,7 @@ class App(tk.Tk):
                 r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"], r["location"], status))
 
     def select_book(self, book_id):
+        """Affiche l'onglet Bibliothèque et y sélectionne le livre (s'il est visible avec le filtre actuel)."""
         self.nb.select(0)
         iid = str(book_id)
         if self.books.exists(iid):
@@ -349,6 +460,20 @@ class App(tk.Tk):
 
     # ---- scan -------------------------------------------------------------
     def on_scan(self, event=None):
+        """Traite le code saisi ou scanné (Entrée dans le champ ISBN, ou bouton OK).
+
+        Selon le mode et l'état du livre :
+
+        ===============  ======================  =================================
+        Mode             Livre connu             Livre inconnu
+        ===============  ======================  =================================
+        Automatique      fiche + actions         recherche en ligne + formulaire
+        Ajout rapide     simple avertissement    recherche en ligne + ajout direct
+        Retour rapide    retour enregistré       erreur
+        ===============  ======================  =================================
+
+        Le champ est vidé immédiatement, prêt pour le scan suivant.
+        """
         raw = self.scan.get().strip()
         self.scan.delete(0, "end")
         if not raw:
@@ -381,6 +506,12 @@ class App(tk.Tk):
         self.register(isbn, quick=(mode == "add"))
 
     def register(self, isbn, quick):
+        """Lance l'enregistrement d'un nouveau livre : recherche en ligne dans un thread.
+
+        La suite se passe dans :meth:`_registered`, rappelé via :meth:`post`
+        une fois la recherche terminée. Un ISBN déjà en cours de recherche
+        est ignoré (double scan).
+        """
         if isbn in self.pending:
             return
         self.pending.add(isbn)
@@ -389,6 +520,12 @@ class App(tk.Tk):
                          daemon=True).start()
 
     def _registered(self, isbn, info, quick):
+        """Fin de :meth:`register`, dans le thread de l'interface.
+
+        En ajout rapide avec infos trouvées, le livre est enregistré
+        directement. Sinon (mode automatique, ou livre introuvable en ligne),
+        le formulaire s'ouvre pré-rempli pour validation ou saisie manuelle.
+        """
         self.pending.discard(isbn)
         if self.lib.book_by_isbn(isbn):  # ajouté entre-temps
             return
@@ -414,6 +551,7 @@ class App(tk.Tk):
 
     # ---- actions sur un livre ---------------------------------------------
     def book_actions(self, book):
+        """Ouvre la fiche (:class:`BookCard`) d'un livre et exécute l'action choisie."""
         loan = self.lib.active_loan(book["id"])
         action = BookCard(self, book, loan).show()
         if action == "lend":
@@ -427,6 +565,7 @@ class App(tk.Tk):
         self.refocus()
 
     def lend(self, book):
+        """Demande l'emprunteur et l'échéance (:class:`LendDialog`) puis enregistre le prêt."""
         res = LendDialog(self, book, self.lib.borrowers()).show()
         if not res:
             return
@@ -440,6 +579,11 @@ class App(tk.Tk):
         self.set_status(f"« {book['title']} » prêté à {who}{suffix}.", "ok")
 
     def edit(self, book):
+        """Ouvre le formulaire de modification du livre et enregistre les changements.
+
+        Une erreur (ex. ISBN déjà utilisé par un autre livre) est affichée
+        sans rien modifier.
+        """
         data = BookForm(self, dict(book), "Modifier le livre").show()
         if not data:
             return
@@ -449,7 +593,10 @@ class App(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Erreur", str(exc), parent=self)
 
+    # Les méthodes *_selected agissent sur le livre sélectionné dans l'onglet
+    # Bibliothèque (boutons de la barre d'outils et double-clic).
     def _selected(self):
+        """Livre sélectionné dans l'onglet Bibliothèque, ou ``None`` (avec un message)."""
         sel = self.books.selection()
         if not sel:
             messagebox.showinfo("Aucune sélection", "Sélectionnez d'abord un livre dans la liste.", parent=self)
@@ -479,6 +626,7 @@ class App(tk.Tk):
         self.refresh()
 
     def add_manual(self):
+        """Ajout d'un livre au clavier, sans scan (ISBN facultatif, pas de recherche en ligne)."""
         data = BookForm(self, {}, "Nouveau livre").show()
         if data:
             if data["isbn"] and self.lib.book_by_isbn(data["isbn"]):
@@ -490,6 +638,7 @@ class App(tk.Tk):
         self.refocus()
 
     def return_selected_loan(self):
+        """Enregistre le retour du prêt sélectionné dans l'onglet Prêts en cours."""
         sel = self.loans.selection()
         if not sel:
             return
@@ -501,6 +650,13 @@ class App(tk.Tk):
 
     # ---- import / export / enrichissement ---------------------------------
     def import_bkc(self):
+        """Importe une collection Book Collector (``.bkc``), voir :mod:`booktek.bkc_import`.
+
+        Les livres dont l'ISBN est déjà en base sont ignorés : l'import peut
+        être relancé sans créer de doublons. Le fichier ne fournissant que
+        l'ISBN et le titre, on propose ensuite de compléter les fiches en
+        ligne (:meth:`enrich`).
+        """
         path = filedialog.askopenfilename(parent=self, title="Collection Book Collector",
                                           filetypes=[("Book Collector", "*.bkc"), ("Tous les fichiers", "*.*")])
         if not path:
@@ -526,12 +682,19 @@ class App(tk.Tk):
             self.enrich()
 
     def enrich(self):
+        """Complète en ligne les fiches sans auteur ou sans éditeur.
+
+        Les recherches sont faites l'une après l'autre dans un thread (pour ne
+        pas saturer les catalogues). Chaque résultat est appliqué dans le
+        thread de l'interface par ``apply``, qui affiche la progression et
+        n'écrase jamais un champ déjà rempli (:meth:`Library.fill_missing`).
+        """
         todo = [(r["id"], r["isbn"]) for r in self.lib.books_missing_info()]
         if not todo:
             self.set_status("Toutes les fiches sont déjà complètes.", "ok")
             return
         self.set_status(f"Recherche en ligne de {len(todo)} fiche(s)…", "info")
-        found = [0]
+        found = [0]  # liste pour pouvoir l'incrémenter depuis la fonction imbriquée
 
         def apply(book_id, info, i):
             if info and self.lib.fill_missing(book_id, info):
@@ -548,6 +711,11 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def export_csv(self):
+        """Exporte toute la bibliothèque, avec l'état des prêts, en CSV.
+
+        Encodage UTF-8 avec BOM et séparateur « ; » : c'est ce qu'attend un
+        Excel français pour ouvrir le fichier correctement par double-clic.
+        """
         path = filedialog.asksaveasfilename(parent=self, defaultextension=".csv", initialfile="bibliotheque.csv",
                                             filetypes=[("CSV", "*.csv")])
         if not path:
@@ -561,5 +729,6 @@ class App(tk.Tk):
 
 
 def main():
+    """Point d'entrée : ouvre la base (voir :func:`data_dir`) et lance l'interface."""
     db_path = os.path.join(data_dir(), "booktek.db")
     App(db_path).mainloop()
