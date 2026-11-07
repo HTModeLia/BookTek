@@ -23,6 +23,7 @@ import csv
 import datetime as dt
 import os
 import queue
+import re
 import sys
 import threading
 import tkinter as tk
@@ -37,7 +38,8 @@ LOAN_DAYS = 21
 #: Libellés français des champs de :data:`booktek.db.FIELDS`.
 LABELS = {
     "isbn": "ISBN", "title": "Titre", "authors": "Auteur(s)", "publisher": "Éditeur",
-    "year": "Année", "pages": "Pages", "location": "Emplacement", "notes": "Notes",
+    "year": "Année", "pages": "Pages", "location": "Meuble / pièce", "shelf": "Étage (1 = haut)",
+    "box": "Box", "depth": "Rangée (1 = devant)", "read_date": "Lu le (JJ/MM/AAAA)", "notes": "Notes",
 }
 #: Couleurs de la ligne de statut selon le type de message.
 COLORS = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8"}
@@ -71,6 +73,30 @@ def fmt_date(iso):
 def parse_date(text):
     """Saisie ``JJ/MM/AAAA`` -> :class:`datetime.date`. Lève :class:`ValueError` si invalide."""
     return dt.datetime.strptime(text.strip(), "%d/%m/%Y").date()
+
+
+def place(book):
+    """Code d'emplacement universel « Meuble › É<étage> › B<box> › R<rangée> » (parties vides omises)."""
+    parts = (book["location"], book["shelf"] and f"É{book['shelf']}",
+             book["box"] and f"B{book['box']}", book["depth"] and f"R{book['depth']}")
+    return " › ".join(p for p in parts if p)
+
+
+def days_since(iso, until=None):
+    """Nombre de jours entre la date ISO ``iso`` et ``until`` (aujourd'hui par défaut)."""
+    end = dt.date.fromisoformat(until) if until else dt.date.today()
+    return (end - dt.date.fromisoformat(iso)).days
+
+
+def sort_key(text, col=""):
+    """Clé de tri « naturelle » : nombres comparés en valeur (É2 avant É10), dates JJ/MM/AAAA
+    dans l'ordre chronologique, auteurs par nom de famille du premier auteur."""
+    if col == "authors":
+        # shortcut: nom = dernier mot du 1er auteur ; faux pour « Ben Jelloun » ou « Nom Prénom », ajouter un champ dédié si gênant
+        text = ((text.split(",")[0].split() or [""])[-1]) + " " + text
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", text):
+        text = "-".join(reversed(text.split("/")))
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", text)]
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +151,8 @@ class BookForm(Dialog):
                 w.insert("1.0", data.get(f) or "")
             else:
                 w = ttk.Entry(self.body, width=52)
-                w.insert(0, data.get(f) or "")
+                value = data.get(f) or ""
+                w.insert(0, fmt_date(value) if f == "read_date" else value)
             w.grid(row=r, column=1, sticky="we", pady=3)
             self.vars[f] = w
         bar = ttk.Frame(self.body)
@@ -153,6 +180,12 @@ class BookForm(Dialog):
         if not out["title"]:
             messagebox.showerror("Titre manquant", "Le titre est obligatoire.", parent=self)
             return
+        if out["read_date"]:
+            try:
+                out["read_date"] = parse_date(out["read_date"]).isoformat()
+            except ValueError:
+                messagebox.showerror("Date invalide", "Date de lecture : format attendu JJ/MM/AAAA.", parent=self)
+                return
         self.result = out
         self.destroy()
 
@@ -201,6 +234,36 @@ class LendDialog(Dialog):
         self.destroy()
 
 
+class BorrowerForm(Dialog):
+    """Fiche d'un contact de l'annuaire ; ``result`` est un dict name/phone/email/notes."""
+
+    FIELDS = (("name", "Nom"), ("phone", "Téléphone"), ("email", "E-mail"), ("notes", "Notes"))
+
+    def __init__(self, master, data, title="Contact"):
+        super().__init__(master, title)
+        self.vars = {}
+        for r, (f, label) in enumerate(self.FIELDS):
+            ttk.Label(self.body, text=label + " :").grid(row=r, column=0, sticky="e", padx=(0, 8), pady=3)
+            w = ttk.Entry(self.body, width=40)
+            w.insert(0, data.get(f) or "")
+            w.grid(row=r, column=1, sticky="we", pady=3)
+            self.vars[f] = w
+        bar = ttk.Frame(self.body)
+        bar.grid(row=len(self.FIELDS), column=0, columnspan=2, pady=(10, 0), sticky="e")
+        ttk.Button(bar, text="Enregistrer", command=self.save).pack(side="left", padx=4)
+        ttk.Button(bar, text="Annuler", command=self.destroy).pack(side="left")
+        self.bind("<Return>", lambda e: self.save())
+        self.vars["name"].focus_set()
+
+    def save(self):
+        out = {f: w.get().strip() for f, w in self.vars.items()}
+        if not out["name"]:
+            messagebox.showerror("Nom manquant", "Le nom est obligatoire.", parent=self)
+            return
+        self.result = out
+        self.destroy()
+
+
 class BookCard(Dialog):
     """Fiche d'un livre connu, avec les actions possibles.
 
@@ -219,7 +282,7 @@ class BookCard(Dialog):
         ttk.Label(self.body, text=book["title"], font=("Segoe UI", 13, "bold"), wraplength=440).pack(anchor="w")
         if book["authors"]:
             ttk.Label(self.body, text=book["authors"], font=("Segoe UI", 11)).pack(anchor="w")
-        details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], book["location"]) if x)
+        details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], place(book)) if x)
         ttk.Label(self.body, text=details, foreground="#666").pack(anchor="w", pady=(2, 10))
         if loan:
             late = loan["due_date"] and loan["due_date"] < dt.date.today().isoformat()
@@ -339,9 +402,10 @@ class App(tk.Tk):
         for txt, cmd in (("Supprimer", self.delete_selected), ("Modifier…", self.edit_selected),
                          ("Prêter / Rendre…", self.open_selected), ("Ajouter manuellement…", self.add_manual)):
             ttk.Button(bar, text=txt, command=cmd).pack(side="right", padx=3)
-        self.books = self._tree(lib, (("isbn", "ISBN", 120), ("title", "Titre", 330), ("authors", "Auteur(s)", 180),
-                                      ("publisher", "Éditeur", 130), ("year", "Année", 55),
-                                      ("location", "Emplacement", 110), ("status", "Statut", 170)))
+        self.books = self._tree(lib, (("isbn", "ISBN", 110), ("title", "Titre", 300), ("authors", "Auteur(s)", 170),
+                                      ("publisher", "Éditeur", 120), ("year", "Année", 55),
+                                      ("read_date", "Lu le", 85), ("place", "Emplacement", 170),
+                                      ("status", "Statut", 150)))
         self.books.bind("<Double-1>", lambda e: self.open_selected())
 
         # Onglet prêts en cours. iid = id du livre (un seul prêt en cours par livre).
@@ -350,15 +414,30 @@ class App(tk.Tk):
         bar = ttk.Frame(loans)
         bar.pack(fill="x", pady=(0, 6))
         ttk.Button(bar, text="Enregistrer le retour", command=self.return_selected_loan).pack(side="right")
-        self.loans = self._tree(loans, (("title", "Titre", 380), ("borrower", "Emprunteur", 170),
-                                        ("loan", "Prêté le", 90), ("due", "Retour prévu", 100), ("late", "Retard", 90)))
+        self.loans = self._tree(loans, (("title", "Titre", 340), ("borrower", "Emprunteur", 160),
+                                        ("loan", "Prêté le", 90), ("elapsed", "Depuis", 70),
+                                        ("due", "Retour prévu", 100), ("late", "Retard", 80)))
         self.loans.tag_configure("late", foreground=COLORS["err"])
 
         # Onglet historique
         hist = ttk.Frame(self.nb, padding=6)
         self.nb.add(hist, text="Historique des prêts")
-        self.hist = self._tree(hist, (("title", "Titre", 400), ("borrower", "Emprunteur", 170),
-                                      ("loan", "Prêté le", 90), ("ret", "Rendu le", 90)))
+        self.hist = self._tree(hist, (("title", "Titre", 380), ("borrower", "Emprunteur", 160),
+                                      ("loan", "Prêté le", 90), ("ret", "Rendu le", 90), ("elapsed", "Durée", 70)))
+
+        # Onglet annuaire. iid = nom du contact.
+        people = ttk.Frame(self.nb, padding=6)
+        self.nb.add(people, text="Annuaire")
+        bar = ttk.Frame(people)
+        bar.pack(fill="x", pady=(0, 6))
+        for txt, cmd in (("Supprimer", self.delete_borrower), ("Modifier…", self.edit_borrower),
+                         ("Ajouter…", self.add_borrower)):
+            ttk.Button(bar, text=txt, command=cmd).pack(side="right", padx=3)
+        self.people = self._tree(people, (("name", "Nom", 180), ("phone", "Téléphone", 120), ("email", "E-mail", 200),
+                                          ("active", "En cours", 70), ("elapsed", "Prêt le plus ancien", 130),
+                                          ("total", "Total prêts", 80), ("notes", "Notes", 200)))
+        self.people.tag_configure("late", foreground=COLORS["err"])
+        self.people.bind("<Double-1>", lambda e: self.edit_borrower())
 
         self.footer = ttk.Label(self, padding=(14, 4))
         self.footer.pack(fill="x")
@@ -369,13 +448,16 @@ class App(tk.Tk):
         """Crée un tableau (Treeview + barre de défilement) dans ``parent``.
 
         ``cols`` est une suite de ``(clé, en-tête, largeur)``. Un clic sur un
-        en-tête trie la colonne.
+        en-tête trie la colonne, un 2e clic inverse l'ordre.
         """
         frame = ttk.Frame(parent)
         frame.pack(fill="both", expand=True)
         tree = ttk.Treeview(frame, columns=[c[0] for c in cols], show="headings", selectmode="browse")
+        tree._labels = {key: label for key, label, _ in cols}
+        tree._sort_state = None
         for key, label, width in cols:
-            tree.heading(key, text=label, command=lambda k=key: self._sort(tree, k))
+            tree.heading(key, text=label, command=lambda k=key: self._sort(
+                tree, k, tree._sort_state == (k, False)))
             tree.column(key, width=width, anchor="w")
         sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=sb.set)
@@ -384,19 +466,22 @@ class App(tk.Tk):
         return tree
 
     @staticmethod
-    def _sort(tree, col):
-        """Trie ``tree`` sur ``col`` (texte, sans casse) ; un 2e clic inverse l'ordre.
+    def _sort(tree, col, desc):
+        """Trie ``tree`` sur ``col`` (voir :func:`sort_key`) et marque l'en-tête d'une flèche.
 
-        Le dernier tri est mémorisé sur le widget (``tree._sort_state``). Il
-        n'est pas réappliqué après un rafraîchissement, qui revient à l'ordre
-        de la base.
+        Le tri est mémorisé sur le widget (``tree._sort_state``) et réappliqué
+        après chaque rafraîchissement par :meth:`_resort`.
         """
-        desc = getattr(tree, "_sort_state", None) == (col, False)
-        rows = [(tree.set(i, col).lower(), i) for i in tree.get_children("")]
-        rows.sort(reverse=desc)
-        for idx, (_, i) in enumerate(rows):
+        rows = sorted(tree.get_children(""), key=lambda i: sort_key(tree.set(i, col), col), reverse=desc)
+        for idx, i in enumerate(rows):
             tree.move(i, "", idx)
         tree._sort_state = (col, desc)
+        for key, label in tree._labels.items():
+            tree.heading(key, text=label + ((" ▼" if desc else " ▲") if key == col else ""))
+
+    def _resort(self, tree):
+        if tree._sort_state:
+            self._sort(tree, *tree._sort_state)
 
     # ---- utilitaires ----------------------------------------------------
     def set_status(self, msg, kind="info"):
@@ -441,17 +526,26 @@ class App(tk.Tk):
         plutôt que de mettre à jour ligne par ligne.
         """
         self.refresh_books()
-        today = dt.date.today()
         self.loans.delete(*self.loans.get_children())
         for r in self.lib.active_loans():
-            late = (today - dt.date.fromisoformat(r["due_date"])).days if r["due_date"] else 0
+            late = days_since(r["due_date"]) if r["due_date"] else 0
             self.loans.insert("", "end", iid=str(r["book_id"]), tags=("late",) if late > 0 else (),
                               values=(r["title"], r["borrower"], fmt_date(r["loan_date"]),
-                                      fmt_date(r["due_date"]), f"{late} j" if late > 0 else ""))
+                                      f"{days_since(r['loan_date'])} j", fmt_date(r["due_date"]),
+                                      f"{late} j" if late > 0 else ""))
         self.hist.delete(*self.hist.get_children())
         for r in self.lib.history():
             self.hist.insert("", "end", values=(r["title"], r["borrower"], fmt_date(r["loan_date"]),
-                                                fmt_date(r["return_date"]) or "en cours"))
+                                                fmt_date(r["return_date"]) or "en cours",
+                                                f"{days_since(r['loan_date'], r['return_date'])} j"))
+        self.people.delete(*self.people.get_children())
+        overdue = {r["borrower"] for r in self.lib.active_loans() if r["due_date"] and days_since(r["due_date"]) > 0}
+        for r in self.lib.directory():
+            oldest = f"{days_since(r['oldest_active'])} j" if r["oldest_active"] else ""
+            self.people.insert("", "end", iid=r["name"], tags=("late",) if r["name"] in overdue else (), values=(
+                r["name"], r["phone"], r["email"], r["active"] or "", oldest, r["total"], r["notes"]))
+        for tree in (self.loans, self.hist, self.people):
+            self._resort(tree)
         s = self.lib.stats()
         self.footer.config(text=f"{s['books']} livres · {s['lent']} prêtés · {s['overdue']} en retard")
         self.nb.tab(1, text=f"Prêts en cours ({s['lent']})")
@@ -462,7 +556,9 @@ class App(tk.Tk):
         for r in self.lib.search(self.search.get()):
             status = f"Prêté à {r['borrower']}" if r["borrower"] else "Disponible"
             self.books.insert("", "end", iid=str(r["id"]), values=(
-                r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"], r["location"], status))
+                r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"],
+                fmt_date(r["read_date"]), place(r), status))
+        self._resort(self.books)
 
     def select_book(self, book_id):
         """Affiche l'onglet Bibliothèque et y sélectionne le livre (s'il est visible avec le filtre actuel)."""
@@ -660,6 +756,40 @@ class App(tk.Tk):
         loan = self.lib.return_book(book["id"])
         if loan:
             self.set_status(f"Retour enregistré : « {book['title']} » (rendu par {loan['borrower']}).", "ok")
+        self.refresh()
+
+    # ---- annuaire -----------------------------------------------------------
+    def add_borrower(self):
+        self._save_borrower(None, {}, "Nouveau contact")
+
+    def edit_borrower(self):
+        sel = self.people.selection()
+        if sel:
+            self._save_borrower(sel[0], dict(self.lib.borrower(sel[0])), "Modifier le contact")
+
+    def _save_borrower(self, old_name, data, title):
+        """Ouvre la fiche contact puis l'enregistre ; un renommage s'applique aussi aux prêts."""
+        out = BorrowerForm(self, data, title).show()
+        if out:
+            try:
+                self.lib.save_borrower(old_name, out)
+                self.set_status(f"Contact enregistré : {out['name']}.", "ok")
+            except ValueError as exc:
+                messagebox.showerror("Annuaire", str(exc), parent=self)
+            self.refresh()
+        self.refocus()
+
+    def delete_borrower(self):
+        sel = self.people.selection()
+        if not sel or not messagebox.askyesno(
+                "Supprimer", f"Retirer « {sel[0]} » de l'annuaire ?\n(L'historique de ses prêts est conservé.)",
+                parent=self):
+            return
+        try:
+            self.lib.delete_borrower(sel[0])
+            self.set_status(f"Contact supprimé : {sel[0]}.", "ok")
+        except ValueError as exc:
+            messagebox.showerror("Suppression impossible", str(exc), parent=self)
         self.refresh()
 
     # ---- import / export / enrichissement ---------------------------------

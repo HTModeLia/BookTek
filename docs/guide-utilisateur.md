@@ -6,8 +6,10 @@
 - [La fenêtre principale](#la-fenêtre-principale)
 - [Scanner un livre](#scanner-un-livre)
 - [Ajouter des livres](#ajouter-des-livres)
+- [Ranger ses livres : le code d'emplacement](#ranger-ses-livres--le-code-demplacement)
 - [Prêter et récupérer un livre](#prêter-et-récupérer-un-livre)
-- [Rechercher, modifier, supprimer](#rechercher-modifier-supprimer)
+- [L'annuaire des emprunteurs](#lannuaire-des-emprunteurs)
+- [Rechercher, trier, modifier, supprimer](#rechercher-trier-modifier-supprimer)
 - [Importer une collection Book Collector](#importer-une-collection-book-collector)
 - [Exporter vers Excel](#exporter-vers-excel)
 - [Mises à jour](#mises-à-jour)
@@ -31,10 +33,11 @@ Au premier lancement, Windows peut afficher « Windows a protégé votre ordinat
   - vert : action réussie ;
   - orange : avertissement ;
   - rouge, avec un bip : erreur, par exemple un code invalide.
-- **Trois onglets** :
-  - **Bibliothèque** : tous les livres avec leur statut (disponible ou prêté à quelqu'un) ;
-  - **Prêts en cours** : les livres sortis, triés par date de retour, les retards en rouge ;
-  - **Historique des prêts** : tous les prêts passés et en cours.
+- **Quatre onglets** :
+  - **Bibliothèque** : tous les livres avec leur emplacement et leur statut (disponible ou prêté à quelqu'un) ;
+  - **Prêts en cours** : les livres sortis, depuis combien de jours, les retards en rouge ;
+  - **Historique des prêts** : tous les prêts passés et en cours, avec leur durée ;
+  - **Annuaire** : les emprunteurs et leurs coordonnées.
 - **En bas** : le nombre de livres, de prêts en cours et de retards.
 
 Appuyez sur **F2** à tout moment pour remettre le curseur dans le champ ISBN.
@@ -61,7 +64,7 @@ Dans la fiche d'un livre, le bouton principal est présélectionné : appuyez su
 
 1. Scannez le livre.
 2. BookTek recherche le titre, les auteurs, l'éditeur, l'année et le nombre de pages dans les catalogues en ligne.
-3. La fiche s'ouvre pré-remplie. Complétez si besoin l'**emplacement** (par exemple « Salon, étagère 2 ») et les **notes**, puis cliquez sur **Enregistrer** ou appuyez sur Entrée.
+3. La fiche s'ouvre pré-remplie. Complétez si besoin l'[emplacement](#ranger-ses-livres--le-code-demplacement) et les **notes**, puis cliquez sur **Enregistrer** ou appuyez sur Entrée.
 
 Si le livre est introuvable en ligne, la fiche s'ouvre avec seulement l'ISBN : saisissez au moins le titre.
 
@@ -72,6 +75,33 @@ Choisissez **Ajout rapide** puis scannez les livres les uns après les autres, s
 ### Un livre sans ISBN
 
 Dans l'onglet **Bibliothèque**, cliquez sur **Ajouter manuellement…**. L'ISBN est facultatif, seul le titre est obligatoire.
+
+## Ranger ses livres : le code d'emplacement
+
+Chaque livre peut recevoir une adresse précise en quatre niveaux, du plus large au plus fin. Tous sont facultatifs.
+
+| Niveau | Champ de la fiche | Exemples | Conseil |
+|---|---|---|---|
+| **Meuble** | Meuble / pièce | `Salon`, `Biblio1`, `Chambre` | Un nom court et unique par meuble |
+| **Étage** | Étage | `1`, `2`, `3` | Numérotez **de haut en bas** : 1 = étagère du haut |
+| **Box** | Box | `1`, `2`, `A` | Une case, un casier ou une boîte, numérotés **de gauche à droite** |
+| **Rangée** | Rangée | `1`, `2` | **1 = devant**, 2 = derrière, 3 = encore derrière |
+
+BookTek assemble ces niveaux en un code affiché dans la colonne **Emplacement** :
+
+```
+Salon › É2 › B3 › R2
+  │      │    │    └─ rangée 2 : derrière les livres de la rangée 1
+  │      │    └────── box 3 : 3e case en partant de la gauche
+  │      └─────────── étage 2 : 2e étagère en partant du haut
+  └────────────────── meuble « Salon »
+```
+
+Ce système s'adapte à tous les meubles : une simple étagère n'utilise que le meuble et l'étage, une bibliothèque à cases utilise le box, et des livres rangés sur deux rangs utilisent la rangée. Pour un carton ou une caisse, mettez son nom en meuble (`Carton3`) et laissez le reste vide.
+
+**Livres rangés devant d'autres livres** : pour trouver un livre en rangée 2, triez par **Emplacement**. Les livres de la rangée 1 du même box apparaissent juste avant : ce sont ceux à retirer pour l'atteindre.
+
+**Ranger une étagère entière** : en mode **Ajout rapide**, scannez les livres, puis renseignez l'emplacement de chacun avec **Modifier…**.
 
 ## Prêter et récupérer un livre
 
@@ -95,10 +125,34 @@ Un livre déjà prêté ne peut pas être prêté une seconde fois avant son ret
 
 L'onglet **Prêts en cours** affiche en rouge les prêts dont la date de retour est dépassée, avec le nombre de jours de retard. Le nombre de retards figure aussi en bas de la fenêtre.
 
-## Rechercher, modifier, supprimer
+## L'annuaire des emprunteurs
 
-- **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. La recherche porte sur le titre, les auteurs, l'ISBN, l'emplacement et le nom de l'emprunteur.
-- **Trier** : cliquez sur l'en-tête d'une colonne ; un second clic inverse l'ordre.
+L'onglet **Annuaire** liste les personnes à qui vous prêtez des livres :
+
+| Colonne | Contenu |
+|---|---|
+| Nom, Téléphone, E-mail, Notes | Coordonnées du contact |
+| En cours | Nombre de livres que la personne a actuellement |
+| Prêt le plus ancien | Depuis combien de jours elle a le plus ancien de ces livres |
+| Total prêts | Nombre de prêts depuis le début, rendus compris |
+
+Les personnes qui ont un livre en retard apparaissent en rouge.
+
+- **Ajouter…** crée un contact. Un emprunteur saisi lors d'un prêt est aussi ajouté automatiquement.
+- **Modifier…**, ou un double-clic, change les coordonnées. Renommer un contact met aussi à jour ses prêts.
+- **Supprimer** retire le contact de l'annuaire. C'est impossible tant qu'il a des livres ; l'historique de ses prêts est conservé.
+
+Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'onglet Prêts en cours, et dans la colonne **Durée** de l'historique (durée totale pour un prêt rendu).
+
+## Rechercher, trier, modifier, supprimer
+
+- **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. La recherche porte sur le titre, les auteurs, l'ISBN, le meuble et le nom de l'emprunteur.
+- **Trier** : cliquez sur l'en-tête d'une colonne ; un second clic inverse l'ordre, et une flèche ▲ ▼ indique le tri en cours. Le tri est conservé après chaque scan ou modification. On peut trier par :
+  - **Auteur** : par le nom de famille du premier auteur ;
+  - **Titre** ;
+  - **Année** de parution ;
+  - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
+  - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
 - **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.
 - **Supprimer** : sélectionnez un livre puis cliquez sur **Supprimer**. Un livre prêté ne peut pas être supprimé avant son retour. La suppression efface aussi l'historique de ses prêts.
 

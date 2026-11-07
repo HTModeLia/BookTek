@@ -80,6 +80,58 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(len(self.lib.search("zzz")), 0)
 
 
+class V12Test(unittest.TestCase):
+    """Version 1.2 : migration, annuaire, rangement, tri."""
+
+    def test_migration_keeps_old_data(self):
+        import sqlite3
+        from booktek import db as dbmod
+        path = os.path.join(tempfile.mkdtemp(), "old.db")
+        con = sqlite3.connect(path)  # base au format 1.1 (schéma initial, user_version 0)
+        con.executescript(dbmod.SCHEMA + """
+            INSERT INTO books (isbn, title, added_at) VALUES ('9782290254738', 'Bridgerton', '2026-01-01');
+            INSERT INTO loans (book_id, borrower, loan_date) VALUES (1, 'Marie', '2026-01-02');""")
+        con.close()
+        lib = Library(path)
+        self.addCleanup(lib.con.close)
+        self.assertEqual(lib.con.execute("PRAGMA user_version").fetchone()[0], len(dbmod.MIGRATIONS))
+        self.assertEqual(lib.book(1)["shelf"], "")
+        self.assertEqual(lib.borrowers(), ["Marie"])
+        lib.con.close()
+        Library(path).con.close()  # réouverture : pas de nouvelle migration
+
+    def test_directory_rename_delete(self):
+        lib = Library(":memory:")
+        self.addCleanup(lib.con.close)
+        b = lib.add_book({"title": "A"})
+        lib.lend(b, "Marie", None)
+        row = lib.directory()[0]
+        self.assertEqual((row["name"], row["active"], row["total"]), ("Marie", 1, 1))
+        self.assertEqual(row["oldest_active"], lib.active_loan(b)["loan_date"])
+        lib.save_borrower("Marie", {"name": "Marie D.", "phone": "06"})
+        self.assertEqual(lib.active_loan(b)["borrower"], "Marie D.")
+        with self.assertRaises(ValueError):
+            lib.delete_borrower("Marie D.")
+        lib.save_borrower(None, {"name": "Paul"})
+        with self.assertRaises(ValueError):
+            lib.save_borrower(None, {"name": "Paul"})
+        lib.return_book(b)
+        lib.delete_borrower("Marie D.")
+        self.assertEqual([r["name"] for r in lib.directory()], ["Paul"])
+        self.assertEqual(len(lib.history()), 1)  # historique conservé
+
+    def test_place_and_sort(self):
+        from booktek.app import days_since, place, sort_key
+        self.assertEqual(place({"location": "Salon", "shelf": "2", "box": "", "depth": "1"}), "Salon › É2 › R1")
+        codes = ["Salon › É10 › B1", "Salon › É2 › B3", "Salon › É2 › B1"]
+        self.assertEqual(sorted(codes, key=sort_key), ["Salon › É2 › B1", "Salon › É2 › B3", "Salon › É10 › B1"])
+        dates = ["01/02/2025", "15/01/2026", "31/12/2024"]
+        self.assertEqual(sorted(dates, key=sort_key), ["31/12/2024", "01/02/2025", "15/01/2026"])
+        authors = ["Julia Quinn", "Juliette Benzoni", "Marie-Bernadette Dupuy"]
+        self.assertEqual(sorted(authors, key=lambda a: sort_key(a, "authors"))[0], "Juliette Benzoni")
+        self.assertEqual(days_since("2026-01-01", "2026-01-31"), 30)
+
+
 class BkcImportTest(unittest.TestCase):
     """Lecture des fichiers Book Collector (.bkc)."""
 

@@ -2,6 +2,18 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.2.0] - 2026-11-07
+
+### Ajouts
+- **Rangement détaillé** avec un code d'emplacement universel *Meuble › Étage › Box › Rangée*, par exemple `Salon › É2 › B3 › R2`. La rangée 1 est celle de devant, la 2 celle de derrière, pour les livres rangés sur deux rangs.
+- **Annuaire des emprunteurs** (nouvel onglet) : téléphone, e-mail, notes, livres en cours, ancienneté du plus vieux prêt en cours, nombre total de prêts. Les contacts en retard apparaissent en rouge.
+- **Durée des prêts** : colonne « Depuis » dans les prêts en cours, colonne « Durée » dans l'historique.
+- **Date de lecture** sur chaque livre.
+- **Tri** par auteur (sur le nom de famille), titre, année, date de lecture ou emplacement, en cliquant sur l'en-tête de colonne. Le tri est conservé après chaque scan.
+
+### Note
+Les bases existantes sont mises à niveau automatiquement au premier lancement, sans perte de données. Les emprunteurs des prêts passés sont ajoutés à l'annuaire.
+
 ## [1.1.0] - 2026-11-06
 
 ### Ajouts

@@ -10,6 +10,11 @@ Le modèle tient en deux tables :
   ``return_date`` est ``NULL`` ; un index unique partiel garantit qu'un livre
   n'a jamais plus d'un prêt en cours. Les prêts rendus constituent
   l'historique.
+* ``borrowers`` : l'annuaire (nom unique, téléphone, e-mail, notes). Les
+  prêts y font référence par le nom.
+
+Les évolutions du schéma sont des scripts de :data:`MIGRATIONS`, appliqués
+à l'ouverture selon ``PRAGMA user_version``.
 
 Les dates sont stockées au format ISO ``AAAA-MM-JJ`` : elles se comparent
 donc directement comme des chaînes (calcul des retards en SQL).
@@ -18,7 +23,9 @@ import datetime as dt
 import sqlite3
 
 #: Champs éditables d'un livre, dans l'ordre d'affichage du formulaire.
-FIELDS = ("isbn", "title", "authors", "publisher", "year", "pages", "location", "notes")
+#: Rangement : location (meuble/pièce) › shelf (étage) › box › depth (rangée, 1 = devant).
+FIELDS = ("isbn", "title", "authors", "publisher", "year", "pages",
+          "location", "shelf", "box", "depth", "read_date", "notes")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS books (
@@ -45,6 +52,25 @@ CREATE TABLE IF NOT EXISTS loans (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_loan ON loans(book_id) WHERE return_date IS NULL;
 """
 
+#: Migrations successives ; l'indice + 1 est la valeur de PRAGMA user_version
+#: atteinte. Ne jamais modifier une migration publiée : en ajouter une.
+MIGRATIONS = [
+    # 1 : rangement détaillé, date de lecture, annuaire des emprunteurs
+    """
+    ALTER TABLE books ADD COLUMN shelf TEXT DEFAULT '';
+    ALTER TABLE books ADD COLUMN box TEXT DEFAULT '';
+    ALTER TABLE books ADD COLUMN depth TEXT DEFAULT '';
+    ALTER TABLE books ADD COLUMN read_date TEXT DEFAULT '';
+    CREATE TABLE borrowers (
+        name  TEXT PRIMARY KEY,
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        notes TEXT DEFAULT ''
+    );
+    INSERT OR IGNORE INTO borrowers (name) SELECT DISTINCT borrower FROM loans;
+    """,
+]
+
 
 def today():
     """Date du jour au format ISO (``AAAA-MM-JJ``)."""
@@ -70,6 +96,10 @@ class Library:
         self.con.row_factory = sqlite3.Row
         self.con.execute("PRAGMA foreign_keys = ON")  # active ON DELETE CASCADE
         self.con.executescript(SCHEMA)
+        version = self.con.execute("PRAGMA user_version").fetchone()[0]
+        for i, script in enumerate(MIGRATIONS[version:], version + 1):
+            # executescript valide la transaction en cours : migration + version dans le même script
+            self.con.executescript(f"BEGIN; {script}; PRAGMA user_version = {i}; COMMIT;")
 
     # ---- livres -------------------------------------------------------
     def book(self, book_id):
@@ -193,6 +223,7 @@ class Library:
         if self.active_loan(book_id):
             raise ValueError("Ce livre est déjà prêté.")
         with self.con:
+            self.con.execute("INSERT OR IGNORE INTO borrowers (name) VALUES (?)", (borrower,))
             self.con.execute(
                 "INSERT INTO loans (book_id, borrower, loan_date, due_date) VALUES (?, ?, ?, ?)",
                 (book_id, borrower, today(), due_date),
@@ -227,10 +258,50 @@ class Library:
         ).fetchall()
 
     def borrowers(self):
-        """Noms des emprunteurs connus, le plus récent d'abord (pour l'autocomplétion)."""
+        """Noms de l'annuaire, le dernier emprunteur d'abord (pour l'autocomplétion)."""
         return [r[0] for r in self.con.execute(
-            "SELECT borrower FROM loans GROUP BY borrower ORDER BY MAX(loan_date) DESC"
+            """SELECT b.name FROM borrowers b LEFT JOIN loans l ON l.borrower = b.name
+               GROUP BY b.name ORDER BY MAX(l.id) DESC, b.name COLLATE NOCASE"""
         )]
+
+    # ---- annuaire -----------------------------------------------------
+    def directory(self):
+        """Annuaire : contact, prêts en cours, total des prêts et date du plus ancien prêt en cours."""
+        return self.con.execute(
+            """SELECT b.*,
+                      COUNT(l.id) AS total,
+                      COUNT(l.id) - COUNT(l.return_date) AS active,
+                      MIN(CASE WHEN l.return_date IS NULL THEN l.loan_date END) AS oldest_active
+               FROM borrowers b LEFT JOIN loans l ON l.borrower = b.name
+               GROUP BY b.name ORDER BY b.name COLLATE NOCASE"""
+        ).fetchall()
+
+    def borrower(self, name):
+        return self.con.execute("SELECT * FROM borrowers WHERE name = ?", (name,)).fetchone()
+
+    def save_borrower(self, old_name, data):
+        """Ajoute (``old_name`` None) ou modifie un contact ; un renommage suit dans les prêts."""
+        name = (data.get("name") or "").strip()
+        if not name:
+            raise ValueError("Le nom est obligatoire.")
+        vals = (name, *((data.get(k) or "").strip() for k in ("phone", "email", "notes")))
+        try:
+            with self.con:
+                if old_name is None:
+                    self.con.execute("INSERT INTO borrowers (name, phone, email, notes) VALUES (?, ?, ?, ?)", vals)
+                else:
+                    self.con.execute("UPDATE borrowers SET name = ?, phone = ?, email = ?, notes = ? WHERE name = ?",
+                                     (*vals, old_name))
+                    self.con.execute("UPDATE loans SET borrower = ? WHERE borrower = ?", (name, old_name))
+        except sqlite3.IntegrityError:
+            raise ValueError(f"« {name} » existe déjà dans l'annuaire.") from None
+
+    def delete_borrower(self, name):
+        """Retire un contact de l'annuaire (l'historique de ses prêts est conservé)."""
+        if self.con.execute("SELECT 1 FROM loans WHERE borrower = ? AND return_date IS NULL", (name,)).fetchone():
+            raise ValueError("Cette personne a des livres en cours de prêt.")
+        with self.con:
+            self.con.execute("DELETE FROM borrowers WHERE name = ?", (name,))
 
     def stats(self):
         """Compteurs affichés en pied de fenêtre : livres, prêtés, en retard."""

@@ -49,10 +49,16 @@ authors     TEXT                        loan_date    TEXT  AAAA-MM-JJ
 publisher   TEXT                        due_date     TEXT  AAAA-MM-JJ (NULL = sans échéance)
 year        TEXT                        return_date  TEXT  NULL = prêt en cours
 pages       TEXT
-location    TEXT                        index unique partiel :
-notes       TEXT                          loans(book_id) WHERE return_date IS NULL
-added_at    TEXT
+location    TEXT  meuble / pièce        index unique partiel :
+shelf       TEXT  étage (1 = haut)        loans(book_id) WHERE return_date IS NULL
+box         TEXT
+depth       TEXT  rangée (1 = devant)   borrowers (annuaire)
+read_date   TEXT  AAAA-MM-JJ            ──────────────────────────
+notes       TEXT                        name   TEXT PK  ◄── loans.borrower (par valeur)
+added_at    TEXT                        phone, email, notes  TEXT
 ```
+
+Le code d'emplacement affiché (`Salon › É2 › B3 › R2`) est calculé par `app.place()` : rien n'est stocké sous cette forme.
 
 Choix de conception :
 
@@ -60,13 +66,30 @@ Choix de conception :
 - **ISBN vide stocké en `NULL`**, et non en chaîne vide : la contrainte `UNIQUE` autorise plusieurs `NULL`, donc plusieurs livres sans ISBN.
 - **Dates en texte ISO** : elles se comparent comme des chaînes, et les retards se calculent en SQL (`due_date < date du jour`).
 - **`year` et `pages` en texte** : les catalogues renvoient des valeurs approximatives ou vides.
-- **Emprunteurs sans table dédiée** : la liste des noms est déduite des prêts (`Library.borrowers()`).
+- **Prêts reliés à l'annuaire par le nom**, et non par une clé : `loans.borrower` contient le nom. Un prêt ajoute le nom à `borrowers` s'il n'y est pas. Un renommage (`save_borrower`) met aussi à jour les prêts. Supprimer un contact conserve ses prêts passés.
+- **Durées non stockées** : le temps écoulé d'un prêt est calculé à l'affichage (`app.days_since()`).
 
 Toutes les écritures passent par `Library`, qui valide les entrées et lève `ValueError` avec un message en français, affichable tel quel.
 
 ### Faire évoluer le schéma
 
-Le schéma est créé par `CREATE TABLE IF NOT EXISTS` à l'ouverture. Pour ajouter une colonne dans une version future, ajoutez une migration dans `Library.__init__`, par exemple en testant `PRAGMA user_version` puis en appliquant un `ALTER TABLE`. Les bases existantes sont conservées lors des mises à jour automatiques.
+`SCHEMA` décrit le schéma initial (version 1.0). Les évolutions suivantes sont des scripts SQL ajoutés à la liste `db.MIGRATIONS`. À l'ouverture, `Library.__init__` applique les migrations que la base n'a pas encore reçues, en se basant sur `PRAGMA user_version`. Chaque migration et son numéro sont écrits dans une même transaction.
+
+Pour faire évoluer le schéma, **ajoutez** une migration en fin de liste, sans jamais modifier une migration déjà publiée. Testez ensuite l'ouverture d'une base au format précédent (voir `V12Test.test_migration_keeps_old_data`).
+
+| `user_version` | Version | Contenu |
+|---|---|---|
+| 0 | 1.0, 1.1 | Schéma initial |
+| 1 | 1.2 | Rangement (`shelf`, `box`, `depth`), `read_date`, table `borrowers` |
+
+## Tri des tableaux
+
+Un clic sur un en-tête trie la colonne avec `app.sort_key()` :
+- les nombres sont comparés en valeur (É2 avant É10) ;
+- les dates `JJ/MM/AAAA` sont triées chronologiquement ;
+- les auteurs sont triés par le dernier mot du premier auteur, supposé être le nom de famille.
+
+Le tri en cours (`tree._sort_state`) est réappliqué après chaque rafraîchissement par `App._resort()`.
 
 ## Interface (`app.py`)
 
