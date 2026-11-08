@@ -96,6 +96,8 @@ def main():
         import PIL  # noqa: F401  (sans Pillow, l'exe serait construit sans affichage des couvertures)
     except ImportError:
         sys.exit("Pillow manquant : pip install pillow")
+    if not os.path.exists(os.path.join("booktek", "_key.py")):
+        sys.exit("Clé Google Books manquante : créez booktek/_key.py (voir docs/publier-une-version.md).")
     print("Tests…")
     run(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q")
     print("Construction de l'exécutable…")

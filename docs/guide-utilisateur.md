@@ -164,9 +164,9 @@ Si vos livres sont déjà catalogués dans *Book Collector* (Collectorz.com) :
 2. BookTek importe l'**ISBN** et le **titre** de chaque livre. Les livres dont l'ISBN est déjà présent sont ignorés : vous pouvez relancer l'import sans créer de doublons.
 3. Le format `.bkc` ne permet pas de récupérer les auteurs. BookTek propose donc de **compléter les fiches via Internet** : acceptez. La progression s'affiche dans la ligne de statut et vous pouvez continuer à travailler pendant ce temps.
 
-À tout moment, **Fichier > Compléter les fiches via Internet** complète les livres qui n'ont pas encore d'auteur ou d'éditeur. Seuls les champs vides sont remplis : vos saisies ne sont jamais écrasées.
+À tout moment, **Fichier > Compléter les fiches via Internet (résumés, couvertures…)** recherche les livres auxquels il manque l'auteur, l'éditeur, le nombre de pages, le résumé ou la couverture. Utilisez-le notamment pour récupérer les couvertures et résumés des livres ajoutés avant la version 1.3. Seuls les champs vides sont remplis : vos saisies ne sont jamais écrasées.
 
-Les couvertures de Book Collector ne sont pas importées.
+Les couvertures de Book Collector ne sont pas importées. Certaines éditions (clubs de livres, éditions anciennes) n'ont de couverture dans aucun catalogue : la fiche s'affiche alors sans image.
 
 > Si un livre importé n'est pas retrouvé quand vous le scannez, son ISBN est probablement faux dans le fichier d'origine. Corrigez-le avec **Modifier…**.
 

@@ -2,6 +2,12 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.3.1] - 2026-11-08
+
+### Corrections
+- Les résumés et couvertures sont de nouveau récupérés depuis Google Books, qui refusait la plupart des recherches faute de quota.
+- Pour récupérer les résumés et couvertures des livres déjà présents, utilisez **Fichier > Compléter les fiches via Internet (résumés, couvertures…)**.
+
 ## [1.3.0] - 2026-11-08
 
 ### Ajouts

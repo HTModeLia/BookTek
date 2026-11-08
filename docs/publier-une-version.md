@@ -5,6 +5,7 @@ Chaque release GitHub publiée est **immédiatement proposée à toutes les inst
 ## Prérequis
 
 - Python 3.10 ou plus récent, PyInstaller et Pillow (`pip install pyinstaller pillow`). Pillow sert à afficher les couvertures, et le script refuse de construire l'exe sans lui.
+- Une clé d'API Google Books dans le fichier `booktek/_key.py`, sur une ligne : `GOOGLE_KEY = "votre-clé"`. Ce fichier est ignoré par git et ne doit jamais être commité. Il est embarqué dans l'exe : restreignez la clé à la seule API Books dans la console Google Cloud. Sans clé, les recherches Google partagent un quota anonyme presque toujours épuisé, et le script refuse de construire l'exe.
 - Des droits d'écriture sur le dépôt `HTModeLia/BookTek`, avec un `git push` qui fonctionne. Le script réutilise ces identifiants ; sinon, définissez la variable d'environnement `GITHUB_TOKEN`.
 
 ## Procédure

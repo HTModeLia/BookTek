@@ -370,7 +370,7 @@ class App(tk.Tk):
         menubar = tk.Menu(self)
         m = tk.Menu(menubar, tearoff=False)
         m.add_command(label="Importer une collection Book Collector (.bkc)…", command=self.import_bkc)
-        m.add_command(label="Compléter les fiches via Internet", command=self.enrich)
+        m.add_command(label="Compléter les fiches via Internet (résumés, couvertures…)", command=self.enrich)
         m.add_command(label="Exporter en CSV…", command=self.export_csv)
         m.add_separator()
         m.add_command(label="Quitter", command=self.destroy)

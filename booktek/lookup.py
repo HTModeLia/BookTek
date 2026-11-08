@@ -28,6 +28,11 @@ import xml.etree.ElementTree as ET
 
 from .isbn import to10
 
+try:  # clé d'API Google Books : fichier local hors dépôt, embarqué dans l'exe (docs/publier-une-version.md)
+    from ._key import GOOGLE_KEY
+except ImportError:
+    GOOGLE_KEY = ""  # sans clé : quota anonyme partagé, souvent épuisé (erreur 429)
+
 HEADERS = {"User-Agent": "BookTek/1.0"}
 #: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
 KEYS = ("title", "authors", "publisher", "year", "pages", "summary", "cover")
@@ -56,7 +61,8 @@ def _year(text):
 
 def google_books(isbn):
     """Source Google Books (API ``volumes``). Le sous-titre est ajouté au titre."""
-    data = _get_json("https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(f"isbn:{isbn}"))
+    url = "https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(f"isbn:{isbn}")
+    data = _get_json(url + (f"&key={GOOGLE_KEY}" if GOOGLE_KEY else ""))
     items = data.get("items") or []
     if not items:
         return {}
