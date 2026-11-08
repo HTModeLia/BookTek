@@ -29,8 +29,8 @@ import xml.etree.ElementTree as ET
 from .isbn import to10
 
 HEADERS = {"User-Agent": "BookTek/1.0"}
-#: Champs recherchés ; ce sont aussi des clés de :data:`booktek.db.FIELDS`.
-KEYS = ("title", "authors", "publisher", "year", "pages")
+#: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
+KEYS = ("title", "authors", "publisher", "year", "pages", "summary", "cover")
 TIMEOUT = 8  # secondes, par requête
 
 
@@ -39,6 +39,13 @@ def _get_json(url):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.load(resp)
+
+
+def _get_bytes(url):
+    """Télécharge le contenu brut de ``url`` (image de couverture)."""
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return resp.read()
 
 
 def _year(text):
@@ -63,6 +70,8 @@ def google_books(isbn):
         "publisher": v.get("publisher", ""),
         "year": _year(v.get("publishedDate")),
         "pages": str(v.get("pageCount") or ""),
+        "summary": re.sub(r"<[^>]+>", "", v.get("description", "")).strip(),  # description parfois en HTML
+        "cover": (v.get("imageLinks") or {}).get("thumbnail", "").replace("http://", "https://"),
     }
 
 
@@ -78,6 +87,7 @@ def open_library(isbn):
         "publisher": ", ".join(p.get("name", "") for p in b.get("publishers") or []),
         "year": _year(b.get("publish_date")),
         "pages": str(b.get("number_of_pages") or ""),
+        "cover": (b.get("cover") or {}).get("medium", ""),
     }
 
 
@@ -109,6 +119,12 @@ def _bnf_person(creator):
     return f"{first.strip()} {last.strip()}".strip()
 
 
+def _bnf_pages(fmt):
+    """Nombre de pages d'un ``dc:format`` BnF : « 1 vol. (586 p.) » ou « (non paginé [47] p.) » -> « 586 » / « 47 »."""
+    m = re.search(r"(\d+)\]?\s*p\.", fmt)
+    return m.group(1) if m else ""
+
+
 def bnf(isbn):
     """Source catalogue de la Bibliothèque nationale de France.
 
@@ -119,7 +135,8 @@ def bnf(isbn):
     * ``dc:creator`` contient aussi illustrateurs, préfaciers… : on garde
       ceux dont le rôle contient « Auteur », ou tous à défaut ;
     * éditeur suivi de la ville entre parenthèses, supprimée ;
-    * nombre de pages lu dans ``dc:format`` (« 1 vol. (586 p.) ; 24 cm »).
+    * nombre de pages lu dans ``dc:format`` (« 1 vol. (586 p.) ; 24 cm »),
+      y compris les livres non paginés (« [47] p. »).
     """
     rec = _bnf_query(isbn)
     if rec is None and to10(isbn):  # anciennes notices indexées en ISBN-10
@@ -129,14 +146,13 @@ def bnf(isbn):
     get = lambda tag: [e.text or "" for e in rec.findall(_DC + tag)]
     creators = get("creator")
     authors = [c for c in creators if "Auteur" in c] or creators
-    fmt = " ".join(get("format"))
-    pages = re.search(r"(\d+)\s*p\.", fmt)
+    pages = _bnf_pages(" ".join(get("format")))
     return {
         "title": (get("title") or [""])[0].split(" / ")[0].strip(),
         "authors": ", ".join(_bnf_person(a) for a in authors),
         "publisher": re.sub(r"\s*\([^)]*\)\s*$", "", (get("publisher") or [""])[0]).strip(),
         "year": _year((get("date") or [""])[0]),
-        "pages": pages.group(1) if pages else "",
+        "pages": pages,
     }
 
 
@@ -150,7 +166,8 @@ def fetch(isbn):
     quota, réponse inattendue) est simplement ignorée.
 
     Retourne un dict (seuls les champs trouvés sont présents), ou ``None`` si
-    aucune source n'a fourni de titre.
+    aucune source n'a fourni de titre. ``cover`` y contient l'image de
+    couverture déjà téléchargée (octets), absente si le téléchargement échoue.
     """
     french = isbn.startswith(("9782", "97910"))
     sources = (bnf, google_books, open_library) if french else (google_books, open_library, bnf)
@@ -165,4 +182,9 @@ def fetch(isbn):
                 result[k] = info[k]
         if all(result.get(k) for k in KEYS):
             break
+    if result.get("cover"):
+        try:
+            result["cover"] = _get_bytes(result["cover"])
+        except Exception:
+            del result["cover"]
     return result if result.get("title") else None

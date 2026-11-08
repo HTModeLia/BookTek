@@ -2,6 +2,16 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.3.0] - 2026-11-08
+
+### Ajouts
+- **Résumé** du livre, récupéré en ligne (Google Books), affiché dans la fiche et modifiable.
+- **Photo de couverture**, téléchargée en ligne (Google Books ou Open Library) et affichée dans la fiche du livre. Les images sont enregistrées dans le dossier `covers` à côté de la base : pensez à le copier avec `booktek.db` quand vous faites une sauvegarde.
+- *Compléter les fiches via Internet* ajoute aussi les résumés, couvertures et nombres de pages manquants, sans jamais remplacer ce que vous avez saisi.
+
+### Corrections
+- Le nombre de pages des livres non paginés (albums jeunesse notamment) est désormais récupéré depuis la BnF.
+
 ## [1.2.0] - 2026-11-07
 
 ### Ajouts

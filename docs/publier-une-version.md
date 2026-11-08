@@ -4,7 +4,7 @@ Chaque release GitHub publiée est **immédiatement proposée à toutes les inst
 
 ## Prérequis
 
-- Python 3.10 ou plus récent, et PyInstaller (`pip install pyinstaller`).
+- Python 3.10 ou plus récent, PyInstaller et Pillow (`pip install pyinstaller pillow`). Pillow sert à afficher les couvertures, et le script refuse de construire l'exe sans lui.
 - Des droits d'écriture sur le dépôt `HTModeLia/BookTek`, avec un `git push` qui fonctionne. Le script réutilise ces identifiants ; sinon, définissez la variable d'environnement `GITHUB_TOKEN`.
 
 ## Procédure

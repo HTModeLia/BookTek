@@ -25,7 +25,7 @@ import sqlite3
 #: Champs éditables d'un livre, dans l'ordre d'affichage du formulaire.
 #: Rangement : location (meuble/pièce) › shelf (étage) › box › depth (rangée, 1 = devant).
 FIELDS = ("isbn", "title", "authors", "publisher", "year", "pages",
-          "location", "shelf", "box", "depth", "read_date", "notes")
+          "location", "shelf", "box", "depth", "read_date", "summary", "notes")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS books (
@@ -69,6 +69,8 @@ MIGRATIONS = [
     );
     INSERT OR IGNORE INTO borrowers (name) SELECT DISTINCT borrower FROM loans;
     """,
+    # 2 : résumé (la couverture est un fichier, voir App.cover_path)
+    "ALTER TABLE books ADD COLUMN summary TEXT DEFAULT ''",
 ]
 
 
@@ -179,9 +181,10 @@ class Library:
         ).fetchall()
 
     def books_missing_info(self):
-        """Livres ayant un ISBN mais sans auteur ou sans éditeur (à compléter en ligne)."""
+        """Livres ayant un ISBN mais sans auteur, éditeur, nombre de pages ou résumé (à compléter en ligne)."""
         return self.con.execute(
-            "SELECT id, isbn FROM books WHERE isbn IS NOT NULL AND (authors = '' OR publisher = '')"
+            "SELECT id, isbn FROM books WHERE isbn IS NOT NULL"
+            " AND (authors = '' OR publisher = '' OR pages = '' OR summary = '')"
         ).fetchall()
 
     def fill_missing(self, book_id, info):
@@ -195,7 +198,7 @@ class Library:
             return False
         data = {f: row[f] for f in FIELDS}
         changed = False
-        for f in ("title", "authors", "publisher", "year", "pages"):
+        for f in ("title", "authors", "publisher", "year", "pages", "summary"):
             if not data[f] and info.get(f):
                 data[f] = info[f]
                 changed = True

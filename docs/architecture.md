@@ -4,8 +4,8 @@ Ce document s'adresse aux développeurs. Le détail de chaque fonction est dans 
 
 ## Principes
 
-- **Python seul, sans dépendances** : Tkinter pour l'interface, SQLite pour les données, urllib pour le réseau. Le seul outil supplémentaire est PyInstaller, et uniquement pour construire l'exe.
-- **Un seul exécutable** (`BookTek.exe`, PyInstaller `--onefile`) et un seul fichier de données (`booktek.db`), pour une installation par simple copie.
+- **Python presque sans dépendances** : Tkinter pour l'interface, SQLite pour les données, urllib pour le réseau. Seule exception, Pillow, pour afficher les couvertures en JPEG (que Tk 8.6 ne lit pas) ; sans lui, l'application fonctionne mais n'affiche pas les couvertures. PyInstaller ne sert qu'à construire l'exe.
+- **Un seul exécutable** (`BookTek.exe`, PyInstaller `--onefile`) et des données à côté : la base `booktek.db` et le dossier `covers/` (une image `<id du livre>.jpg` par couverture). Une installation se fait par simple copie, et une sauvegarde aussi, à condition de copier les deux.
 - **L'ISBN-13 normalisé comme clé** : tout code saisi, scanné ou importé passe par `isbn.normalize()` avant d'être comparé ou stocké.
 - **L'interface ne bloque jamais** : tout ce qui touche au réseau tourne dans un thread.
 

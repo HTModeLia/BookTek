@@ -92,6 +92,10 @@ def main():
     if run("git", "tag", "-l", tag, capture=True):
         sys.exit(f"Le tag {tag} existe déjà : incrémentez __version__ dans booktek/__init__.py.")
 
+    try:
+        import PIL  # noqa: F401  (sans Pillow, l'exe serait construit sans affichage des couvertures)
+    except ImportError:
+        sys.exit("Pillow manquant : pip install pillow")
     print("Tests…")
     run(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q")
     print("Construction de l'exécutable…")

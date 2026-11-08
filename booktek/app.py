@@ -39,7 +39,8 @@ LOAN_DAYS = 21
 LABELS = {
     "isbn": "ISBN", "title": "Titre", "authors": "Auteur(s)", "publisher": "Éditeur",
     "year": "Année", "pages": "Pages", "location": "Meuble / pièce", "shelf": "Étage (1 = haut)",
-    "box": "Box", "depth": "Rangée (1 = devant)", "read_date": "Lu le (JJ/MM/AAAA)", "notes": "Notes",
+    "box": "Box", "depth": "Rangée (1 = devant)", "read_date": "Lu le (JJ/MM/AAAA)", "summary": "Résumé",
+    "notes": "Notes",
 }
 #: Couleurs de la ligne de statut selon le type de message.
 COLORS = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8"}
@@ -48,6 +49,11 @@ try:
     import winsound
 except ImportError:  # hors Windows
     winsound = None
+
+try:  # Tk 8.6 ne lit pas le JPEG des couvertures ; sans Pillow, elles ne sont pas affichées
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
 
 
 def data_dir():
@@ -146,8 +152,8 @@ class BookForm(Dialog):
         self.vars = {}
         for r, f in enumerate(FIELDS):
             ttk.Label(self.body, text=LABELS[f] + " :").grid(row=r, column=0, sticky="ne", padx=(0, 8), pady=3)
-            if f == "notes":
-                w = tk.Text(self.body, width=50, height=4, font=("Segoe UI", 10))
+            if f in ("summary", "notes"):
+                w = tk.Text(self.body, width=50, height=4, font=("Segoe UI", 10), wrap="word")
                 w.insert("1.0", data.get(f) or "")
             else:
                 w = ttk.Entry(self.body, width=52)
@@ -159,7 +165,7 @@ class BookForm(Dialog):
         bar.grid(row=len(FIELDS), column=0, columnspan=2, pady=(10, 0), sticky="e")
         ttk.Button(bar, text="Enregistrer", command=self.save).pack(side="left", padx=4)
         ttk.Button(bar, text="Annuler", command=self.destroy).pack(side="left")
-        # Entrée valide le formulaire, sauf dans le champ Notes (multiligne).
+        # Entrée valide le formulaire, sauf dans les champs Résumé et Notes (multilignes).
         self.bind("<Return>", lambda e: self.save() if not isinstance(e.widget, tk.Text) else None)
         # Focus sur le premier champ utile : titre si l'ISBN est connu mais pas
         # le titre (introuvable en ligne), emplacement si la fiche est déjà
@@ -277,13 +283,24 @@ class BookCard(Dialog):
     barre d'espace la déclenche.
     """
 
-    def __init__(self, master, book, loan):
+    def __init__(self, master, book, loan, cover):
         super().__init__(master, "Livre")
+        if Image and os.path.exists(cover):
+            try:
+                img = Image.open(cover)
+                img.thumbnail((160, 240))
+                self.photo = ImageTk.PhotoImage(img)  # référence à garder, sinon Tk efface l'image
+                ttk.Label(self.body, image=self.photo).pack(side="left", anchor="n", padx=(0, 14))
+            except Exception:
+                pass  # image illisible : fiche sans couverture
         ttk.Label(self.body, text=book["title"], font=("Segoe UI", 13, "bold"), wraplength=440).pack(anchor="w")
         if book["authors"]:
             ttk.Label(self.body, text=book["authors"], font=("Segoe UI", 11)).pack(anchor="w")
         details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], place(book)) if x)
         ttk.Label(self.body, text=details, foreground="#666").pack(anchor="w", pady=(2, 10))
+        if book["summary"]:
+            text = book["summary"] if len(book["summary"]) <= 600 else book["summary"][:600].rstrip() + "…"
+            ttk.Label(self.body, text=text, wraplength=440, justify="left").pack(anchor="w", pady=(0, 10))
         if loan:
             late = loan["due_date"] and loan["due_date"] < dt.date.today().isoformat()
             msg = f"Prêté à {loan['borrower']} depuis le {fmt_date(loan['loan_date'])}"
@@ -641,6 +658,7 @@ class App(tk.Tk):
             return
         if quick and info:
             book_id = self.lib.add_book({"isbn": isbn, **info})
+            self.save_cover(book_id, info)
             self.set_status(f"Ajouté : « {info['title']} »{' — ' + info['authors'] if info.get('authors') else ''}", "ok")
         else:
             if not info:
@@ -655,15 +673,33 @@ class App(tk.Tk):
             except Exception as exc:
                 messagebox.showerror("Erreur", str(exc), parent=self)
                 return
+            self.save_cover(book_id, info or {})
             self.set_status(f"Ajouté : « {data['title']} ».", "ok")
         self.refresh()
         self.select_book(book_id)
+
+    def cover_path(self, book_id):
+        """Fichier de couverture du livre : ``covers/<id>.jpg`` à côté de la base (il peut ne pas exister)."""
+        return os.path.join(os.path.dirname(self.db_path), "covers", f"{book_id}.jpg")
+
+    def save_cover(self, book_id, info):
+        """Enregistre la couverture téléchargée par :func:`lookup.fetch`, sans remplacer une couverture existante.
+
+        Retourne ``True`` si un fichier a été écrit.
+        """
+        path = self.cover_path(book_id)
+        if not info.get("cover") or os.path.exists(path):
+            return False
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(info["cover"])
+        return True
 
     # ---- actions sur un livre ---------------------------------------------
     def book_actions(self, book):
         """Ouvre la fiche (:class:`BookCard`) d'un livre et exécute l'action choisie."""
         loan = self.lib.active_loan(book["id"])
-        action = BookCard(self, book, loan).show()
+        action = BookCard(self, book, loan, self.cover_path(book["id"])).show()
         if action == "lend":
             self.lend(book)
         elif action == "return":
@@ -730,6 +766,8 @@ class App(tk.Tk):
             return
         try:
             self.lib.delete_book(book["id"])
+            if os.path.exists(self.cover_path(book["id"])):
+                os.remove(self.cover_path(book["id"]))  # sinon un futur livre réutilisant cet id hériterait de l'image
             self.set_status(f"Supprimé : « {book['title']} ».", "ok")
         except ValueError as exc:
             messagebox.showerror("Suppression impossible", str(exc), parent=self)
@@ -826,14 +864,17 @@ class App(tk.Tk):
             self.enrich()
 
     def enrich(self):
-        """Complète en ligne les fiches sans auteur ou sans éditeur.
+        """Complète en ligne les fiches incomplètes (:meth:`Library.books_missing_info`) ou sans couverture.
 
         Les recherches sont faites l'une après l'autre dans un thread (pour ne
         pas saturer les catalogues). Chaque résultat est appliqué dans le
         thread de l'interface par ``apply``, qui affiche la progression et
         n'écrase jamais un champ déjà rempli (:meth:`Library.fill_missing`).
         """
-        todo = [(r["id"], r["isbn"]) for r in self.lib.books_missing_info()]
+        todo = dict(self.lib.books_missing_info())
+        todo.update((r["id"], r["isbn"]) for r in self.lib.search()
+                    if r["isbn"] and not os.path.exists(self.cover_path(r["id"])))
+        todo = sorted(todo.items())
         if not todo:
             self.set_status("Toutes les fiches sont déjà complètes.", "ok")
             return
@@ -841,7 +882,7 @@ class App(tk.Tk):
         found = [0]  # liste pour pouvoir l'incrémenter depuis la fonction imbriquée
 
         def apply(book_id, info, i):
-            if info and self.lib.fill_missing(book_id, info):
+            if info and (self.lib.fill_missing(book_id, info) | self.save_cover(book_id, info)):
                 found[0] += 1
             self.set_status(f"Recherche en ligne : {i}/{len(todo)} ({found[0]} complétée(s))…", "info")
             if i == len(todo):

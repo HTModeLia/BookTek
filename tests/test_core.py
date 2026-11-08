@@ -18,7 +18,7 @@ sys.path.insert(0, ROOT)
 from booktek import bkc_import  # noqa: E402
 from booktek.db import Library  # noqa: E402
 from booktek.isbn import normalize, to10  # noqa: E402
-from booktek.lookup import _bnf_person  # noqa: E402
+from booktek.lookup import _bnf_pages, _bnf_person  # noqa: E402
 
 
 class IsbnTest(unittest.TestCase):
@@ -41,6 +41,21 @@ class IsbnTest(unittest.TestCase):
     def test_bnf_person(self):
         self.assertEqual(_bnf_person("Cantini, Barbara (1977-....). Auteur du texte"), "Barbara Cantini")
         self.assertEqual(_bnf_person("Collectif. Auteur du texte"), "Collectif")
+
+    def test_fetch_cover(self):
+        from unittest import mock
+        from booktek import lookup
+        info = {"title": "T", "summary": "S", "cover": "https://x/c.jpg"}
+        with mock.patch.object(lookup, "bnf", return_value=info),                 mock.patch.object(lookup, "google_books", return_value={}),                 mock.patch.object(lookup, "open_library", return_value={}):
+            with mock.patch.object(lookup, "_get_bytes", return_value=b"JPEG"):
+                self.assertEqual(lookup.fetch("9782226440235")["cover"], b"JPEG")
+            with mock.patch.object(lookup, "_get_bytes", side_effect=OSError):
+                self.assertNotIn("cover", lookup.fetch("9782226440235"))
+
+    def test_bnf_pages(self):
+        self.assertEqual(_bnf_pages("1 vol. (586 p.) ; 24 cm"), "586")
+        self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")
+        self.assertEqual(_bnf_pages("1 vol. ; 22 cm"), "")
 
     def test_invalid(self):
         self.assertIsNone(normalize("9782290254739"))
@@ -95,7 +110,7 @@ class V12Test(unittest.TestCase):
         lib = Library(path)
         self.addCleanup(lib.con.close)
         self.assertEqual(lib.con.execute("PRAGMA user_version").fetchone()[0], len(dbmod.MIGRATIONS))
-        self.assertEqual(lib.book(1)["shelf"], "")
+        self.assertEqual((lib.book(1)["shelf"], lib.book(1)["summary"]), ("", ""))
         self.assertEqual(lib.borrowers(), ["Marie"])
         lib.con.close()
         Library(path).con.close()  # réouverture : pas de nouvelle migration
