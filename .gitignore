@@ -224,3 +224,5 @@ __marimo__/
 *.db
 .exemple
 booktek/_key.py
+livres*.csv
+Book Collector/

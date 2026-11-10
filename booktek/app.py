@@ -38,10 +38,13 @@ LOAN_DAYS = 21
 #: Libellés français des champs de :data:`booktek.db.FIELDS`.
 LABELS = {
     "isbn": "ISBN", "title": "Titre", "authors": "Auteur(s)", "publisher": "Éditeur",
-    "year": "Année", "pages": "Pages", "location": "Meuble / pièce", "shelf": "Étage (1 = haut)",
+    "year": "Année", "genre": "Genre", "pages": "Pages", "location": "Meuble / pièce", "shelf": "Étage (1 = haut)",
     "box": "Box", "depth": "Rangée (1 = devant)", "read_date": "Lu le (JJ/MM/AAAA)", "summary": "Résumé",
     "notes": "Notes",
 }
+#: Champs proposés pour filtrer (« Tout » = recherche plein texte) et trier la bibliothèque.
+SEARCH_IN = {"Tout": None, "Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
+SORTS = {"Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
 #: Couleurs de la ligne de statut selon le type de message.
 COLORS = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8"}
 
@@ -296,7 +299,7 @@ class BookCard(Dialog):
         ttk.Label(self.body, text=book["title"], font=("Segoe UI", 13, "bold"), wraplength=440).pack(anchor="w")
         if book["authors"]:
             ttk.Label(self.body, text=book["authors"], font=("Segoe UI", 11)).pack(anchor="w")
-        details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], place(book)) if x)
+        details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], book["genre"], place(book)) if x)
         ttk.Label(self.body, text=details, foreground="#666").pack(anchor="w", pady=(2, 10))
         if book["summary"]:
             text = book["summary"] if len(book["summary"]) <= 600 else book["summary"][:600].rstrip() + "…"
@@ -323,6 +326,98 @@ class BookCard(Dialog):
         """Mémorise l'action choisie et ferme la fiche."""
         self.result = action
         self.destroy()
+
+
+class CoverGrid(ttk.Frame):
+    """Vue « Miniatures » de la bibliothèque : une case par livre (couverture, titre, auteur), en grille.
+
+    La grille n'a pas d'état propre : :meth:`show` reçoit les livres déjà
+    filtrés et triés (dans l'ordre du tableau de la vue Liste). Un clic
+    appelle ``on_select(iid)``, un double-clic ``on_open(iid)``. Sans
+    couverture (ou sans Pillow), la case affiche le titre sur fond gris.
+    """
+    TILE = 124  # largeur d'une case, marges comprises (pixels)
+    W, H = 100, 150  # taille maximale d'une miniature
+
+    def __init__(self, master, on_select, on_open):
+        super().__init__(master)
+        self.on_select, self.on_open = on_select, on_open
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg="white")
+        sb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=sb.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        self.inner = tk.Frame(self.canvas, bg="white")
+        self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self._layout())
+        # Molette : liée globalement (les cases captent le pointeur), filtrée sur la position.
+        self.bind_all("<MouseWheel>", self._wheel, add="+")
+        self.blank = tk.PhotoImage(width=self.W, height=self.H)
+        self.cache = {}  # (chemin, date de modification) -> PhotoImage ou None
+        self.tiles = {}  # iid -> case, dans l'ordre d'affichage
+        self.cols = 0
+
+    def _wheel(self, event):
+        w = self.winfo_containing(event.x_root, event.y_root)
+        if w is not None and str(w).startswith(str(self)):
+            self.canvas.yview_scroll(int(-event.delta / 120), "units")
+
+    def _thumb(self, path):
+        """Miniature de la couverture ``path`` (mise en cache), ou ``None`` si absente ou illisible."""
+        if not (Image and os.path.exists(path)):
+            return None
+        key = (path, os.path.getmtime(path))
+        if key not in self.cache:
+            try:
+                img = Image.open(path)
+                img.thumbnail((self.W, self.H))
+                self.cache[key] = ImageTk.PhotoImage(img)
+            except Exception:
+                self.cache[key] = None
+        return self.cache[key]
+
+    def show(self, items, selected=None):
+        """Affiche ``items`` : suite de ``(iid, titre, auteurs, chemin de couverture)``."""
+        for tile in self.tiles.values():
+            tile.destroy()
+        self.tiles = {}
+        cut = lambda s, n: s if len(s) <= n else s[:n - 1].rstrip() + "…"
+        for iid, title, authors, cover in items:
+            tile = tk.Frame(self.inner, bg="white", padx=4, pady=4, highlightthickness=2, highlightbackground="white")
+            img = self._thumb(cover)
+            tk.Label(tile, image=img or self.blank, width=self.W, height=self.H, compound="center",
+                     text="" if img else cut(title, 60), wraplength=self.W - 12, fg="#555",
+                     bg="white" if img else "#e6e6e6").pack()
+            tk.Label(tile, text=cut(title, 30), font=("Segoe UI", 9, "bold"), bg="white",
+                     wraplength=self.TILE - 16, height=2).pack()
+            tk.Label(tile, text=cut(authors.split(",")[0], 20), font=("Segoe UI", 8), fg="#666", bg="white").pack()
+            for w in (tile, *tile.winfo_children()):
+                w.bind("<Button-1>", lambda e, i=iid: self.select(i))
+                w.bind("<Double-1>", lambda e, i=iid: self.on_open(i))
+            self.tiles[iid] = tile
+        self.cols = 0  # force la remise en grille
+        self._layout()
+        self.canvas.yview_moveto(0)
+        if selected in self.tiles:
+            self.select(selected, notify=False)
+
+    def _layout(self):
+        """Place les cases en autant de colonnes que la largeur le permet (recalculé au redimensionnement)."""
+        tile_w = max((t.winfo_reqwidth() for t in self.tiles.values()), default=self.TILE)  # largeur réelle, bordures comprises
+        cols = max(1, self.canvas.winfo_width() // tile_w)
+        if cols == self.cols:
+            return
+        self.cols = cols
+        for n, tile in enumerate(self.tiles.values()):
+            tile.grid(row=n // cols, column=n % cols, sticky="n")
+
+    def select(self, iid, notify=True):
+        """Encadre la case ``iid`` (et prévient l'application)."""
+        for i, tile in self.tiles.items():
+            tile.configure(highlightbackground=COLORS["info"] if i == iid else "white")
+        if notify:
+            self.on_select(iid)
 
 
 # ---------------------------------------------------------------------------
@@ -419,11 +514,30 @@ class App(tk.Tk):
         for txt, cmd in (("Supprimer", self.delete_selected), ("Modifier…", self.edit_selected),
                          ("Prêter / Rendre…", self.open_selected), ("Ajouter manuellement…", self.add_manual)):
             ttk.Button(bar, text=txt, command=cmd).pack(side="right", padx=3)
-        self.books = self._tree(lib, (("isbn", "ISBN", 110), ("title", "Titre", 300), ("authors", "Auteur(s)", 170),
-                                      ("publisher", "Éditeur", 120), ("year", "Année", 55),
-                                      ("read_date", "Lu le", 85), ("place", "Emplacement", 170),
-                                      ("status", "Statut", 150)))
+        bar = ttk.Frame(lib)
+        bar.pack(fill="x", pady=(0, 6))
+        ttk.Label(bar, text="Chercher dans :").pack(side="left")
+        self.search_in = ttk.Combobox(bar, values=list(SEARCH_IN), state="readonly", width=8)
+        self.search_in.set("Tout")
+        self.search_in.bind("<<ComboboxSelected>>", lambda e: self.refresh_books())
+        self.search_in.pack(side="left", padx=(6, 16))
+        ttk.Label(bar, text="Trier par :").pack(side="left")
+        self.sort_by = ttk.Combobox(bar, values=list(SORTS), state="readonly", width=8)
+        self.sort_by.bind("<<ComboboxSelected>>", self.sort_books)
+        self.sort_by.pack(side="left", padx=6)
+        self.sort_desc = tk.BooleanVar()
+        ttk.Checkbutton(bar, text="Décroissant", variable=self.sort_desc, command=self.sort_books).pack(side="left")
+        self.view = tk.StringVar(value="list")
+        for val, txt in (("grid", "Miniatures"), ("list", "Liste")):
+            ttk.Radiobutton(bar, text=txt, value=val, variable=self.view, command=self.show_view).pack(side="right", padx=4)
+        ttk.Label(bar, text="Affichage :").pack(side="right")
+        self.books = self._tree(lib, (("isbn", "ISBN", 110), ("title", "Titre", 280), ("authors", "Auteur(s)", 160),
+                                      ("publisher", "Éditeur", 110), ("year", "Année", 55), ("genre", "Genre", 100),
+                                      ("read_date", "Lu le", 85), ("place", "Emplacement", 160),
+                                      ("status", "Statut", 140)))
         self.books.bind("<Double-1>", lambda e: self.open_selected())
+        self.books._on_sort = self._books_sorted  # synchronise « Trier par » avec un clic sur un en-tête
+        self.covers = CoverGrid(lib, on_select=self.books.selection_set, on_open=lambda iid: self.open_selected())
 
         # Onglet prêts en cours. iid = id du livre (un seul prêt en cours par livre).
         loans = ttk.Frame(self.nb, padding=6)
@@ -495,6 +609,8 @@ class App(tk.Tk):
         tree._sort_state = (col, desc)
         for key, label in tree._labels.items():
             tree.heading(key, text=label + ((" ▼" if desc else " ▲") if key == col else ""))
+        if hasattr(tree, "_on_sort"):
+            tree._on_sort(col, desc)
 
     def _resort(self, tree):
         if tree._sort_state:
@@ -568,14 +684,49 @@ class App(tk.Tk):
         self.nb.tab(1, text=f"Prêts en cours ({s['lent']})")
 
     def refresh_books(self):
-        """Recharge l'onglet Bibliothèque selon le texte de recherche (appelé à chaque frappe)."""
+        """Recharge l'onglet Bibliothèque selon la recherche (appelé à chaque frappe).
+
+        « Chercher dans : Tout » fait la recherche plein texte de la base ;
+        sinon le texte est cherché dans le seul champ choisi.
+        """
+        field, text = SEARCH_IN[self.search_in.get()], self.search.get().strip().lower()
+        rows = self.lib.search("" if field else text)
+        if field:
+            rows = [r for r in rows if text in (r[field] or "").lower()]
         self.books.delete(*self.books.get_children())
-        for r in self.lib.search(self.search.get()):
+        for r in rows:
             status = f"Prêté à {r['borrower']}" if r["borrower"] else "Disponible"
             self.books.insert("", "end", iid=str(r["id"]), values=(
-                r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"],
+                r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"], r["genre"],
                 fmt_date(r["read_date"]), place(r), status))
         self._resort(self.books)
+        self.show_covers()
+
+    def sort_books(self, event=None):
+        """Applique « Trier par » / « Décroissant » (les deux vues suivent l'ordre du tableau)."""
+        if self.sort_by.get():
+            self._sort(self.books, SORTS[self.sort_by.get()], self.sort_desc.get())
+            self.show_covers()
+
+    def _books_sorted(self, col, desc):
+        """Après un tri du tableau, reflète la colonne choisie dans « Trier par » (vide si hors liste)."""
+        self.sort_by.set(next((label for label, key in SORTS.items() if key == col), ""))
+        self.sort_desc.set(desc)
+
+    def show_view(self):
+        """Bascule entre la vue Liste (tableau) et la vue Miniatures (couvertures)."""
+        grid = self.view.get() == "grid"
+        (self.books.master if grid else self.covers).pack_forget()
+        (self.covers if grid else self.books.master).pack(fill="both", expand=True)
+        self.show_covers()
+
+    def show_covers(self):
+        """Redessine la vue Miniatures (si affichée) à partir des lignes du tableau, dans le même ordre."""
+        if self.view.get() != "grid":
+            return
+        sel = self.books.selection()
+        self.covers.show([(i, self.books.set(i, "title"), self.books.set(i, "authors"), self.cover_path(int(i)))
+                          for i in self.books.get_children()], sel[0] if sel else None)
 
     def select_book(self, book_id):
         """Affiche l'onglet Bibliothèque et y sélectionne le livre (s'il est visible avec le filtre actuel)."""
@@ -584,6 +735,7 @@ class App(tk.Tk):
         if self.books.exists(iid):
             self.books.selection_set(iid)
             self.books.see(iid)
+            self.covers.select(iid, notify=False)
 
     # ---- scan -------------------------------------------------------------
     def on_scan(self, event=None):

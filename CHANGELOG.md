@@ -2,6 +2,14 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.4.0] - 2026-11-10
+
+### Ajouts
+- **Affichage en miniatures** : dans l'onglet Bibliothèque, choisissez *Liste* ou *Miniatures* pour voir vos livres sous forme de couvertures.
+- **Genre** du livre, modifiable dans la fiche et récupéré en ligne (Google Books) par *Compléter les fiches via Internet*.
+- **Filtre par champ** : *Chercher dans* limite la recherche au titre, à l'auteur, à l'année ou au genre.
+- **Trier par** titre, auteur, année ou genre, en ordre croissant ou décroissant, dans les deux affichages.
+
 ## [1.3.1] - 2026-11-08
 
 ### Corrections

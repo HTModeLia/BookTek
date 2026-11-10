@@ -24,7 +24,7 @@ import sqlite3
 
 #: Champs éditables d'un livre, dans l'ordre d'affichage du formulaire.
 #: Rangement : location (meuble/pièce) › shelf (étage) › box › depth (rangée, 1 = devant).
-FIELDS = ("isbn", "title", "authors", "publisher", "year", "pages",
+FIELDS = ("isbn", "title", "authors", "publisher", "year", "genre", "pages",
           "location", "shelf", "box", "depth", "read_date", "summary", "notes")
 
 SCHEMA = """
@@ -71,6 +71,8 @@ MIGRATIONS = [
     """,
     # 2 : résumé (la couverture est un fichier, voir App.cover_path)
     "ALTER TABLE books ADD COLUMN summary TEXT DEFAULT ''",
+    # 3 : genre (filtre et tri de la bibliothèque)
+    "ALTER TABLE books ADD COLUMN genre TEXT DEFAULT ''",
 ]
 
 
@@ -162,7 +164,7 @@ class Library:
             self.con.execute("DELETE FROM books WHERE id = ?", (book_id,))
 
     def search(self, text=""):
-        """Recherche plein texte simple (titre, auteurs, ISBN, emplacement, emprunteur).
+        """Recherche plein texte simple (titre, auteurs, année, genre, ISBN, emplacement, emprunteur).
 
         Chaque ligne contient les colonnes de ``books`` plus ``borrower`` et
         ``due_date`` du prêt en cours (``None`` si le livre est disponible).
@@ -174,17 +176,17 @@ class Library:
             """SELECT b.*, l.borrower, l.due_date
                FROM books b
                LEFT JOIN loans l ON l.book_id = b.id AND l.return_date IS NULL
-               WHERE b.title LIKE ? OR b.authors LIKE ? OR IFNULL(b.isbn, '') LIKE ?
-                  OR b.location LIKE ? OR IFNULL(l.borrower, '') LIKE ?
+               WHERE b.title LIKE ? OR b.authors LIKE ? OR b.year LIKE ? OR b.genre LIKE ?
+                  OR IFNULL(b.isbn, '') LIKE ? OR b.location LIKE ? OR IFNULL(l.borrower, '') LIKE ?
                ORDER BY b.authors COLLATE NOCASE, b.title COLLATE NOCASE""",
-            (like,) * 5,
+            (like,) * 7,
         ).fetchall()
 
     def books_missing_info(self):
-        """Livres ayant un ISBN mais sans auteur, éditeur, nombre de pages ou résumé (à compléter en ligne)."""
+        """Livres ayant un ISBN mais sans auteur, éditeur, nombre de pages, résumé ou genre (à compléter en ligne)."""
         return self.con.execute(
             "SELECT id, isbn FROM books WHERE isbn IS NOT NULL"
-            " AND (authors = '' OR publisher = '' OR pages = '' OR summary = '')"
+            " AND (authors = '' OR publisher = '' OR pages = '' OR summary = '' OR genre = '')"
         ).fetchall()
 
     def fill_missing(self, book_id, info):
@@ -198,7 +200,7 @@ class Library:
             return False
         data = {f: row[f] for f in FIELDS}
         changed = False
-        for f in ("title", "authors", "publisher", "year", "pages", "summary"):
+        for f in ("title", "authors", "publisher", "year", "genre", "pages", "summary"):
             if not data[f] and info.get(f):
                 data[f] = info[f]
                 changed = True

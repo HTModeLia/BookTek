@@ -35,7 +35,7 @@ except ImportError:
 
 HEADERS = {"User-Agent": "BookTek/1.0"}
 #: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
-KEYS = ("title", "authors", "publisher", "year", "pages", "summary", "cover")
+KEYS = ("title", "authors", "publisher", "year", "genre", "pages", "summary", "cover")
 TIMEOUT = 8  # secondes, par requête
 
 
@@ -75,6 +75,7 @@ def google_books(isbn):
         "authors": ", ".join(v.get("authors") or []),
         "publisher": v.get("publisher", ""),
         "year": _year(v.get("publishedDate")),
+        "genre": ", ".join(v.get("categories") or []),
         "pages": str(v.get("pageCount") or ""),
         "summary": re.sub(r"<[^>]+>", "", v.get("description", "")).strip(),  # description parfois en HTML
         "cover": (v.get("imageLinks") or {}).get("thumbnail", "").replace("http://", "https://"),

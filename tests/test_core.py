@@ -94,6 +94,12 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(len(self.lib.search("bridger")), 1)
         self.assertEqual(len(self.lib.search("zzz")), 0)
 
+    def test_genre(self):
+        self.lib.fill_missing(self.bid, {"genre": "Romance"})
+        self.assertEqual(len(self.lib.search("roman")), 1)  # recherche plein texte sur le genre
+        self.lib.fill_missing(self.bid, {"genre": "Fiction"})  # genre déjà saisi : conservé
+        self.assertEqual(self.lib.book(self.bid)["genre"], "Romance")
+
 
 class V12Test(unittest.TestCase):
     """Version 1.2 : migration, annuaire, rangement, tri."""
