@@ -149,11 +149,24 @@ class BookForm(Dialog):
 
     ``data`` pré-remplit le formulaire (dict ou ligne de base). ``result``
     est un dict des champs de :data:`FIELDS`, avec l'ISBN normalisé.
+
+    Avec ``cover`` (chemin de la couverture d'un livre existant), le
+    formulaire affiche la jaquette et un bouton pour en choisir une autre :
+    l'image choisie est dans ``cover_src``, à enregistrer par l'appelant
+    si le formulaire est validé.
     """
 
-    def __init__(self, master, data, title="Livre"):
+    def __init__(self, master, data, title="Livre", cover=None):
         super().__init__(master, title)
         self.vars = {}
+        self.cover_src = None
+        if cover is not None:
+            side = ttk.Frame(self.body)
+            side.grid(row=0, column=2, rowspan=len(FIELDS), sticky="n", padx=(14, 0))
+            self.cover_label = ttk.Label(side, text="Pas de jaquette", width=20, anchor="center")
+            self.cover_label.pack(pady=(3, 6))
+            ttk.Button(side, text="Changer la jaquette…", command=self.pick_cover).pack()
+            self._preview(cover)
         for r, f in enumerate(FIELDS):
             ttk.Label(self.body, text=LABELS[f] + " :").grid(row=r, column=0, sticky="ne", padx=(0, 8), pady=3)
             if f in ("summary", "notes"):
@@ -176,6 +189,33 @@ class BookForm(Dialog):
         # remplie, ISBN pour une saisie entièrement manuelle.
         focus = "title" if data.get("isbn") and not data.get("title") else "location" if data.get("title") else "isbn"
         self.vars[focus].focus_set()
+
+    def _preview(self, path):
+        """Affiche l'image ``path`` dans l'aperçu ; retourne ``False`` si elle est illisible."""
+        if not (Image and os.path.exists(path)):
+            return False
+        try:
+            img = Image.open(path)
+            img.thumbnail((160, 240))
+            self.photo = ImageTk.PhotoImage(img)  # référence à garder, sinon Tk efface l'image
+        except Exception:
+            return False
+        self.cover_label.configure(image=self.photo, text="", width=0)
+        return True
+
+    def pick_cover(self):
+        """Choisit une nouvelle jaquette sur le disque (enregistrée seulement si le formulaire est validé)."""
+        src = filedialog.askopenfilename(parent=self, title="Choisir la jaquette",
+                                         filetypes=[("Images", "*.jpg *.jpeg *.png *.gif *.bmp *.webp"),
+                                                    ("Tous les fichiers", "*.*")])
+        if not src:
+            return
+        if Image and not self._preview(src):
+            messagebox.showerror("Jaquette", "Ce fichier n'est pas une image lisible.", parent=self)
+            return
+        self.cover_src = src
+        if not Image:
+            self.cover_label.configure(text=os.path.basename(src))
 
     def save(self):
         """Valide la saisie (ISBN facultatif mais valide, titre obligatoire) et ferme."""
@@ -278,7 +318,7 @@ class BookCard(Dialog):
     """Fiche d'un livre connu, avec les actions possibles.
 
     Affiche le livre et son état (disponible, prêté, en retard). ``result``
-    vaut ``"lend"``, ``"return"``, ``"edit"``, ``"cover"`` ou ``None`` (fermé) ; c'est
+    vaut ``"lend"``, ``"return"``, ``"edit"`` ou ``None`` (fermé) ; c'est
     l'appelant (:meth:`App.book_actions`) qui exécute l'action.
 
     Entrée n'est volontairement pas liée : une douchette envoie Entrée après
@@ -320,7 +360,6 @@ class BookCard(Dialog):
                           command=lambda: self.choose("return" if loan else "lend"))
         main.pack(side="left", padx=4)
         ttk.Button(bar, text="Modifier…", command=lambda: self.choose("edit")).pack(side="left", padx=4)
-        ttk.Button(bar, text="Jaquette…", command=lambda: self.choose("cover")).pack(side="left", padx=4)
         ttk.Button(bar, text="Fermer", command=self.destroy).pack(side="left")
         main.focus_set()  # Espace = action principale
 
@@ -852,13 +891,8 @@ class App(tk.Tk):
             f.write(info["cover"])
         return True
 
-    def change_cover(self, book):
-        """Remplace la couverture du livre par une image choisie sur le disque (convertie en JPEG)."""
-        src = filedialog.askopenfilename(parent=self, title="Choisir la jaquette",
-                                         filetypes=[("Images", "*.jpg *.jpeg *.png *.gif *.bmp *.webp"),
-                                                    ("Tous les fichiers", "*.*")])
-        if not src:
-            return
+    def change_cover(self, book, src):
+        """Remplace la couverture du livre par l'image ``src`` (convertie en JPEG)."""
         path = self.cover_path(book["id"])
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
@@ -868,8 +902,6 @@ class App(tk.Tk):
                 shutil.copyfile(src, path)
         except Exception as exc:
             messagebox.showerror("Jaquette", f"Image illisible : {exc}", parent=self)
-            return
-        self.set_status(f"Jaquette modifiée : « {book['title']} ».", "ok")
 
     # ---- actions sur un livre ---------------------------------------------
     def book_actions(self, book):
@@ -883,8 +915,6 @@ class App(tk.Tk):
             self.set_status(f"Retour enregistré : « {book['title']} » (rendu par {loan['borrower']}).", "ok")
         elif action == "edit":
             self.edit(book)
-        elif action == "cover":
-            self.change_cover(book)
         self.refresh()
         self.refocus()
 
@@ -908,11 +938,14 @@ class App(tk.Tk):
         Une erreur (ex. ISBN déjà utilisé par un autre livre) est affichée
         sans rien modifier.
         """
-        data = BookForm(self, dict(book), "Modifier le livre").show()
+        form = BookForm(self, dict(book), "Modifier le livre", self.cover_path(book["id"]))
+        data = form.show()
         if not data:
             return
         try:
             self.lib.update_book(book["id"], data)
+            if form.cover_src:
+                self.change_cover(book, form.cover_src)
             self.set_status(f"Fiche modifiée : « {data['title']} ».", "ok")
         except Exception as exc:
             messagebox.showerror("Erreur", str(exc), parent=self)

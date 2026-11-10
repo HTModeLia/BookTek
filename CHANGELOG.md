@@ -2,6 +2,11 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.5.1] - 2026-11-10
+
+### Modifications
+- La jaquette se change désormais depuis **Modifier…** : elle s'affiche à droite du formulaire, avec le bouton *Changer la jaquette…*. La nouvelle image est enregistrée avec la fiche (et ignorée si vous annulez).
+
 ## [1.5.0] - 2026-11-10
 
 ### Ajouts
