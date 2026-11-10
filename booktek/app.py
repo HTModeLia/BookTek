@@ -24,6 +24,7 @@ import datetime as dt
 import os
 import queue
 import re
+import shutil
 import sys
 import threading
 import tkinter as tk
@@ -277,7 +278,7 @@ class BookCard(Dialog):
     """Fiche d'un livre connu, avec les actions possibles.
 
     Affiche le livre et son état (disponible, prêté, en retard). ``result``
-    vaut ``"lend"``, ``"return"``, ``"edit"`` ou ``None`` (fermé) ; c'est
+    vaut ``"lend"``, ``"return"``, ``"edit"``, ``"cover"`` ou ``None`` (fermé) ; c'est
     l'appelant (:meth:`App.book_actions`) qui exécute l'action.
 
     Entrée n'est volontairement pas liée : une douchette envoie Entrée après
@@ -319,6 +320,7 @@ class BookCard(Dialog):
                           command=lambda: self.choose("return" if loan else "lend"))
         main.pack(side="left", padx=4)
         ttk.Button(bar, text="Modifier…", command=lambda: self.choose("edit")).pack(side="left", padx=4)
+        ttk.Button(bar, text="Jaquette…", command=lambda: self.choose("cover")).pack(side="left", padx=4)
         ttk.Button(bar, text="Fermer", command=self.destroy).pack(side="left")
         main.focus_set()  # Espace = action principale
 
@@ -397,6 +399,7 @@ class CoverGrid(ttk.Frame):
                 w.bind("<Double-1>", lambda e, i=iid: self.on_open(i))
             self.tiles[iid] = tile
         self.cols = 0  # force la remise en grille
+        self.update_idletasks()  # sinon les nouvelles cases ont une largeur demandée de 1 px : tout sur une ligne
         self._layout()
         self.canvas.yview_moveto(0)
         if selected in self.tiles:
@@ -589,11 +592,13 @@ class App(tk.Tk):
         for key, label, width in cols:
             tree.heading(key, text=label, command=lambda k=key: self._sort(
                 tree, k, tree._sort_state == (k, False)))
-            tree.column(key, width=width, anchor="w")
+            tree.column(key, width=width, minwidth=width, anchor="w")  # minwidth : défilement horizontal plutôt que colonnes écrasées
         sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=sb.set)
-        tree.pack(side="left", fill="both", expand=True)
+        hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=sb.set, xscrollcommand=hsb.set)
         sb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        tree.pack(side="left", fill="both", expand=True)
         return tree
 
     @staticmethod
@@ -847,6 +852,25 @@ class App(tk.Tk):
             f.write(info["cover"])
         return True
 
+    def change_cover(self, book):
+        """Remplace la couverture du livre par une image choisie sur le disque (convertie en JPEG)."""
+        src = filedialog.askopenfilename(parent=self, title="Choisir la jaquette",
+                                         filetypes=[("Images", "*.jpg *.jpeg *.png *.gif *.bmp *.webp"),
+                                                    ("Tous les fichiers", "*.*")])
+        if not src:
+            return
+        path = self.cover_path(book["id"])
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            if Image:
+                Image.open(src).convert("RGB").save(path, "JPEG", quality=90)
+            else:
+                shutil.copyfile(src, path)
+        except Exception as exc:
+            messagebox.showerror("Jaquette", f"Image illisible : {exc}", parent=self)
+            return
+        self.set_status(f"Jaquette modifiée : « {book['title']} ».", "ok")
+
     # ---- actions sur un livre ---------------------------------------------
     def book_actions(self, book):
         """Ouvre la fiche (:class:`BookCard`) d'un livre et exécute l'action choisie."""
@@ -859,6 +883,8 @@ class App(tk.Tk):
             self.set_status(f"Retour enregistré : « {book['title']} » (rendu par {loan['borrower']}).", "ok")
         elif action == "edit":
             self.edit(book)
+        elif action == "cover":
+            self.change_cover(book)
         self.refresh()
         self.refocus()
 

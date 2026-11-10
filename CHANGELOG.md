@@ -2,6 +2,15 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.5.0] - 2026-11-10
+
+### Ajouts
+- **Modifier la jaquette** : bouton *Jaquette…* dans la fiche d'un livre pour choisir une image de couverture sur l'ordinateur.
+- **Défilement horizontal** des tableaux quand la fenêtre est trop étroite pour afficher toutes les colonnes.
+
+### Corrections
+- En vue *Miniatures*, les couvertures ne s'alignent plus toutes sur une seule ligne après une recherche, un tri ou une modification.
+
 ## [1.4.0] - 2026-11-10
 
 ### Ajouts

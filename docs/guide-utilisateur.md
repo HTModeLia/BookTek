@@ -156,6 +156,8 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
   - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
   - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
 - **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.
+- **Jaquette** : ouvrez la fiche du livre (double-clic) puis cliquez sur **Jaquette…** pour choisir une image (JPEG, PNG…) qui remplace la couverture.
+- En vue **Liste**, si la fenêtre est trop étroite pour toutes les colonnes, une barre de défilement horizontale apparaît sous le tableau.
 - **Supprimer** : sélectionnez un livre puis cliquez sur **Supprimer**. Un livre prêté ne peut pas être supprimé avant son retour. La suppression efface aussi l'historique de ses prêts.
 
 ## Importer une collection Book Collector
