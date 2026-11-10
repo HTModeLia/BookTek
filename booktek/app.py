@@ -20,6 +20,7 @@ threads déposent donc leurs résultats dans une file via :meth:`App.post`, que
 :meth:`App._poll` vide toutes les 100 ms depuis le thread de l'interface.
 """
 import csv
+import json
 import datetime as dt
 import os
 import queue
@@ -29,6 +30,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 
 from . import __version__, bkc_import, lookup, updater
 from .db import FIELDS, Library
@@ -46,8 +48,22 @@ LABELS = {
 #: Champs proposés pour filtrer (« Tout » = recherche plein texte) et trier la bibliothèque.
 SEARCH_IN = {"Tout": None, "Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
 SORTS = {"Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
-#: Couleurs de la ligne de statut selon le type de message.
-COLORS = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8"}
+#: Couleurs du thème clair : messages (ok, warn, err, info), fond des zones blanches (panel),
+#: texte (fg), texte secondaire (muted), case sans couverture (tile, tile_fg).
+LIGHT = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8",
+         "panel": "white", "fg": "black", "muted": "#555", "tile": "#e6e6e6", "tile_fg": "#444"}
+#: Thème sombre à fort contraste (texte presque blanc, couleurs vives) : lisible sans fatigue.
+DARK = {"ok": "#6ee08f", "warn": "#ffc14d", "err": "#ff8080", "info": "#7cc0ff",
+        "panel": "#1e1e1e", "fg": "#f2f2f2", "muted": "#d0d0d0", "tile": "#3a3a3a", "tile_fg": "#e8e8e8"}
+#: Couleurs en cours, remplies par :meth:`App._apply_theme`.
+COLORS = dict(LIGHT)
+#: Points ajoutés à toutes les polices (réglage « Grands caractères »), fixé par :meth:`App._apply_theme`.
+FONT_BONUS = [0]
+
+
+def ui_font(size, *style):
+    """Police Segoe UI de ``size`` points, agrandie si « Grands caractères » est coché."""
+    return ("Segoe UI", size + FONT_BONUS[0], *style)
 
 try:
     import winsound
@@ -170,7 +186,7 @@ class BookForm(Dialog):
         for r, f in enumerate(FIELDS):
             ttk.Label(self.body, text=LABELS[f] + " :").grid(row=r, column=0, sticky="ne", padx=(0, 8), pady=3)
             if f in ("summary", "notes"):
-                w = tk.Text(self.body, width=50, height=4, font=("Segoe UI", 10), wrap="word")
+                w = tk.Text(self.body, width=50, height=4, font="TkTextFont", wrap="word")
                 w.insert("1.0", data.get(f) or "")
             else:
                 w = ttk.Entry(self.body, width=52)
@@ -250,7 +266,7 @@ class LendDialog(Dialog):
 
     def __init__(self, master, book, borrowers):
         super().__init__(master, "Prêter un livre")
-        ttk.Label(self.body, text=book["title"], font=("Segoe UI", 11, "bold"), wraplength=380).grid(
+        ttk.Label(self.body, text=book["title"], font=ui_font(11, "bold"), wraplength=380).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
         ttk.Label(self.body, text="Emprunteur :").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=3)
         self.who = ttk.Combobox(self.body, values=borrowers, width=32)
@@ -314,6 +330,59 @@ class BorrowerForm(Dialog):
         self.destroy()
 
 
+def book_details(parent, book, loan, cover, wrap=440, summary_max=600, cover_parent=None):
+    """Place la jaquette (dans ``cover_parent``, à défaut à gauche de ``parent``) et la description
+    du livre (titre, auteurs, détails, état du prêt, résumé) dans ``parent``.
+
+    Le résumé est coupé à ``summary_max`` caractères ; avec ``None``, il est
+    affiché en entier dans une zone qui défile.
+
+    Utilisé par la fiche (:class:`BookCard`) et le panneau sous la liste.
+    Retourne l'image affichée (à garder en référence, sinon Tk l'efface), ou ``None``.
+    """
+    photo = None
+    if Image and os.path.exists(cover):
+        try:
+            img = Image.open(cover)
+            img.thumbnail((160, 240))
+            photo = ImageTk.PhotoImage(img)
+            ttk.Label(cover_parent or parent, image=photo).pack(side="left", anchor="n", padx=(0, 14))
+        except Exception:
+            pass  # image illisible : fiche sans couverture
+    ttk.Label(parent, text=book["title"], font=ui_font(13, "bold"), wraplength=wrap).pack(anchor="w")
+    if book["authors"]:
+        ttk.Label(parent, text=book["authors"], font=ui_font(11)).pack(anchor="w")
+    details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], book["genre"],
+                                     book["pages"] and f"{book['pages']} pages", place(book)) if x)
+    ttk.Label(parent, text=details, foreground=COLORS["muted"], wraplength=wrap).pack(anchor="w", pady=(2, 8))
+    if loan:
+        late = loan["due_date"] and loan["due_date"] < dt.date.today().isoformat()
+        msg = f"Prêté à {loan['borrower']} depuis le {fmt_date(loan['loan_date'])}"
+        if loan["due_date"]:
+            msg += f" — retour prévu le {fmt_date(loan['due_date'])}"
+        ttk.Label(parent, text=msg + (" (EN RETARD)" if late else ""), foreground=COLORS["err" if late else "warn"],
+                  font=ui_font(11, "bold"), wraplength=wrap, justify="left").pack(anchor="w")
+    else:
+        ttk.Label(parent, text="Disponible", foreground=COLORS["ok"], font=ui_font(11, "bold")).pack(anchor="w")
+    if book["summary"] and summary_max is None:  # panneau : résumé complet, avec défilement
+        box = ttk.Frame(parent)
+        box.pack(fill="both", expand=True, pady=(8, 0))
+        sb = ttk.Scrollbar(box, orient="vertical")
+        t = tk.Text(box, wrap="word", font="TkDefaultFont", relief="flat", highlightthickness=0, height=1,
+                    bg=ttk.Style(parent).lookup("TFrame", "background"), fg=COLORS["fg"], yscrollcommand=sb.set)
+        sb.config(command=t.yview)
+        t.insert("1.0", book["summary"])
+        t.config(state="disabled")
+        sb.pack(side="right", fill="y")
+        t.pack(side="left", fill="both", expand=True)
+    elif book["summary"]:
+        text = book["summary"]
+        if len(text) > summary_max:
+            text = text[:summary_max].rstrip() + "…"
+        ttk.Label(parent, text=text, wraplength=wrap, justify="left").pack(anchor="w", pady=(8, 0))
+    return photo
+
+
 class BookCard(Dialog):
     """Fiche d'un livre connu, avec les actions possibles.
 
@@ -329,31 +398,7 @@ class BookCard(Dialog):
 
     def __init__(self, master, book, loan, cover):
         super().__init__(master, "Livre")
-        if Image and os.path.exists(cover):
-            try:
-                img = Image.open(cover)
-                img.thumbnail((160, 240))
-                self.photo = ImageTk.PhotoImage(img)  # référence à garder, sinon Tk efface l'image
-                ttk.Label(self.body, image=self.photo).pack(side="left", anchor="n", padx=(0, 14))
-            except Exception:
-                pass  # image illisible : fiche sans couverture
-        ttk.Label(self.body, text=book["title"], font=("Segoe UI", 13, "bold"), wraplength=440).pack(anchor="w")
-        if book["authors"]:
-            ttk.Label(self.body, text=book["authors"], font=("Segoe UI", 11)).pack(anchor="w")
-        details = " · ".join(x for x in (book["isbn"], book["publisher"], book["year"], book["genre"], place(book)) if x)
-        ttk.Label(self.body, text=details, foreground="#666").pack(anchor="w", pady=(2, 10))
-        if book["summary"]:
-            text = book["summary"] if len(book["summary"]) <= 600 else book["summary"][:600].rstrip() + "…"
-            ttk.Label(self.body, text=text, wraplength=440, justify="left").pack(anchor="w", pady=(0, 10))
-        if loan:
-            late = loan["due_date"] and loan["due_date"] < dt.date.today().isoformat()
-            msg = f"Prêté à {loan['borrower']} depuis le {fmt_date(loan['loan_date'])}"
-            if loan["due_date"]:
-                msg += f" — retour prévu le {fmt_date(loan['due_date'])}"
-            tk.Label(self.body, text=msg + (" (EN RETARD)" if late else ""), fg=COLORS["err" if late else "warn"],
-                     font=("Segoe UI", 10, "bold"), wraplength=440, justify="left").pack(anchor="w")
-        else:
-            tk.Label(self.body, text="Disponible", fg=COLORS["ok"], font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        self.photo = book_details(self.body, book, loan, cover)
         bar = ttk.Frame(self.body)
         bar.pack(anchor="e", pady=(14, 0))
         main = ttk.Button(bar, text="Enregistrer le retour" if loan else "Prêter…",
@@ -383,12 +428,12 @@ class CoverGrid(ttk.Frame):
     def __init__(self, master, on_select, on_open):
         super().__init__(master)
         self.on_select, self.on_open = on_select, on_open
-        self.canvas = tk.Canvas(self, highlightthickness=0, bg="white")
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg=COLORS["panel"])
         sb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=sb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        self.inner = tk.Frame(self.canvas, bg="white")
+        self.inner = tk.Frame(self.canvas, bg=COLORS["panel"])
         self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self._layout())
@@ -425,14 +470,15 @@ class CoverGrid(ttk.Frame):
         self.tiles = {}
         cut = lambda s, n: s if len(s) <= n else s[:n - 1].rstrip() + "…"
         for iid, title, authors, cover in items:
-            tile = tk.Frame(self.inner, bg="white", padx=4, pady=4, highlightthickness=2, highlightbackground="white")
+            bg = COLORS["panel"]
+            tile = tk.Frame(self.inner, bg=bg, padx=4, pady=4, highlightthickness=2, highlightbackground=bg)
             img = self._thumb(cover)
             tk.Label(tile, image=img or self.blank, width=self.W, height=self.H, compound="center",
-                     text="" if img else cut(title, 60), wraplength=self.W - 12, fg="#555",
-                     bg="white" if img else "#e6e6e6").pack()
-            tk.Label(tile, text=cut(title, 30), font=("Segoe UI", 9, "bold"), bg="white",
+                     text="" if img else cut(title, 60), wraplength=self.W - 12, fg=COLORS["tile_fg"],
+                     bg=bg if img else COLORS["tile"]).pack()
+            tk.Label(tile, text=cut(title, 30), font=ui_font(9, "bold"), bg=bg, fg=COLORS["fg"],
                      wraplength=self.TILE - 16, height=2).pack()
-            tk.Label(tile, text=cut(authors.split(",")[0], 20), font=("Segoe UI", 8), fg="#666", bg="white").pack()
+            tk.Label(tile, text=cut(authors.split(",")[0], 20), font=ui_font(8), fg=COLORS["muted"], bg=bg).pack()
             for w in (tile, *tile.winfo_children()):
                 w.bind("<Button-1>", lambda e, i=iid: self.select(i))
                 w.bind("<Double-1>", lambda e, i=iid: self.on_open(i))
@@ -457,7 +503,7 @@ class CoverGrid(ttk.Frame):
     def select(self, iid, notify=True):
         """Encadre la case ``iid`` (et prévient l'application)."""
         for i, tile in self.tiles.items():
-            tile.configure(highlightbackground=COLORS["info"] if i == iid else "white")
+            tile.configure(highlightbackground=COLORS["info"] if i == iid else COLORS["panel"])
         if notify:
             self.on_select(iid)
 
@@ -490,6 +536,12 @@ class App(tk.Tk):
         self.pending = set()  # ISBN en cours de recherche en ligne
         self.update_ready = None
         self._update_busy = False  # une vérification de mise à jour est en cours
+        self.settings_path = os.path.join(os.path.dirname(db_path), "settings.json")
+        try:
+            with open(self.settings_path, encoding="utf-8") as f:
+                self.settings = json.load(f)
+        except (OSError, ValueError):
+            self.settings = {}  # premier lancement ou fichier abîmé : réglages par défaut
         self._build()
         self.refresh()
         self.after(100, self._poll)
@@ -499,10 +551,7 @@ class App(tk.Tk):
     # ---- construction ---------------------------------------------------
     def _build(self):
         """Crée le menu, la zone de scan, la ligne de statut, les onglets et le pied de page."""
-        style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Treeview", rowheight=24)
+        self._apply_theme()
 
         menubar = tk.Menu(self)
         m = tk.Menu(menubar, tearoff=False)
@@ -513,6 +562,11 @@ class App(tk.Tk):
         m.add_command(label="Quitter", command=self.destroy)
         menubar.add_cascade(label="Fichier", menu=m)
         m = tk.Menu(menubar, tearoff=False)
+        for key, label in (("dark", "Thème sombre"), ("large", "Grands caractères")):
+            var = tk.BooleanVar(self, value=bool(self.settings.get(key)))
+            m.add_checkbutton(label=label, variable=var, command=lambda k=key, v=var: self.set_setting(k, v.get()))
+        menubar.add_cascade(label="Affichage", menu=m)
+        m = tk.Menu(menubar, tearoff=False)
         m.add_command(label="Rechercher une mise à jour", command=self.check_updates_manual)
         m.add_command(label="À propos de BookTek", command=self.about)
         menubar.add_cascade(label="Aide", menu=m)
@@ -520,7 +574,7 @@ class App(tk.Tk):
 
         top = ttk.Frame(self, padding=(12, 10, 12, 4))
         top.pack(fill="x")
-        ttk.Label(top, text="ISBN :", font=("Segoe UI", 14)).pack(side="left")
+        ttk.Label(top, text="ISBN :", font=ui_font(14)).pack(side="left")
         self.scan = ttk.Entry(top, font=("Consolas", 18), width=20)
         self.scan.pack(side="left", padx=8)
         self.scan.bind("<Return>", self.on_scan)
@@ -536,9 +590,9 @@ class App(tk.Tk):
         # Bouton affiché seulement quand une mise à jour est téléchargée (voir _update_done).
         self.update_btn = tk.Button(top, text="Mettre à jour", command=self.install_update, bg=COLORS["info"],
                                     fg="white", activebackground=COLORS["ok"], activeforeground="white",
-                                    font=("Segoe UI", 10, "bold"), relief="flat", padx=10, pady=4, cursor="hand2")
+                                    font=ui_font(10, "bold"), relief="flat", padx=10, pady=4, cursor="hand2")
 
-        self.status = tk.Label(self, anchor="w", font=("Segoe UI", 12, "bold"), padx=14, pady=4)
+        self.status = tk.Label(self, anchor="w", font=ui_font(12, "bold"), padx=14, pady=4)
         self.status.pack(fill="x")
 
         self.nb = ttk.Notebook(self)
@@ -553,9 +607,9 @@ class App(tk.Tk):
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *a: self.refresh_books())
         ttk.Entry(bar, textvariable=self.search, width=30).pack(side="left", padx=6)
-        for txt, cmd in (("Supprimer", self.delete_selected), ("Modifier…", self.edit_selected),
-                         ("Prêter / Rendre…", self.open_selected), ("Ajouter manuellement…", self.add_manual)):
-            ttk.Button(bar, text=txt, command=cmd).pack(side="right", padx=3)
+        self.count = ttk.Label(bar, font=ui_font(11, "bold"))  # nombre de livres affichés (filtre compris)
+        self.count.pack(side="left", padx=10)
+        ttk.Button(bar, text="Ajouter manuellement…", command=self.add_manual).pack(side="right", padx=3)
         bar = ttk.Frame(lib)
         bar.pack(fill="x", pady=(0, 6))
         ttk.Label(bar, text="Chercher dans :").pack(side="left")
@@ -573,13 +627,24 @@ class App(tk.Tk):
         for val, txt in (("grid", "Miniatures"), ("list", "Liste")):
             ttk.Radiobutton(bar, text=txt, value=val, variable=self.view, command=self.show_view).pack(side="right", padx=4)
         ttk.Label(bar, text="Affichage :").pack(side="right")
-        self.books = self._tree(lib, (("isbn", "ISBN", 110), ("title", "Titre", 280), ("authors", "Auteur(s)", 160),
+        # Liste (ou miniatures) en haut, fiche du livre sélectionné en bas ; la séparation se déplace à la souris.
+        paned = ttk.PanedWindow(lib, orient="vertical")
+        paned.pack(fill="both", expand=True)
+        self.view_box = ttk.Frame(paned)
+        self.detail = ttk.Frame(paned, height=280, padding=(4, 10, 4, 0))
+        self.detail.pack_propagate(False)  # hauteur fixée par la séparation, pas par le contenu
+        self._detail_w = 0
+        self.detail.bind("<Configure>", lambda e: e.width != self._detail_w and self.show_detail())
+        paned.add(self.view_box, weight=3)
+        paned.add(self.detail, weight=1)
+        self.books = self._tree(self.view_box, (("isbn", "ISBN", 110), ("title", "Titre", 280), ("authors", "Auteur(s)", 160),
                                       ("publisher", "Éditeur", 110), ("year", "Année", 55), ("genre", "Genre", 100),
                                       ("read_date", "Lu le", 85), ("place", "Emplacement", 160),
                                       ("status", "Statut", 140)))
         self.books.bind("<Double-1>", lambda e: self.open_selected())
+        self.books.bind("<<TreeviewSelect>>", lambda e: self.show_detail())
         self.books._on_sort = self._books_sorted  # synchronise « Trier par » avec un clic sur un en-tête
-        self.covers = CoverGrid(lib, on_select=self.books.selection_set, on_open=lambda iid: self.open_selected())
+        self.covers = CoverGrid(self.view_box, on_select=self.books.selection_set, on_open=lambda iid: self.open_selected())
 
         # Onglet prêts en cours. iid = id du livre (un seul prêt en cours par livre).
         loans = ttk.Frame(self.nb, padding=6)
@@ -616,6 +681,77 @@ class App(tk.Tk):
         self.footer.pack(fill="x")
         self.bind_all("<F2>", lambda e: self.scan.focus_set())
         self.scan.focus_set()
+        if self.update_ready:  # interface reconstruite (changement d'affichage) après le téléchargement
+            self.update_btn.config(text=f"⬆ Mettre à jour vers {self.update_ready.version}")
+            self.update_btn.pack(side="right")
+
+    def _apply_theme(self):
+        """Applique les réglages d'affichage : thème clair (Windows) ou sombre, taille du texte.
+
+        Les widgets ttk suivent le style ; les widgets tk (statut, miniatures,
+        champs multilignes) lisent :data:`COLORS` et la base d'options à leur
+        création, d'où la reconstruction de l'interface dans :meth:`set_setting`.
+        """
+        dark = bool(self.settings.get("dark"))
+        COLORS.clear()
+        COLORS.update(DARK if dark else LIGHT)
+        FONT_BONUS[0] = 3 if self.settings.get("large") else 0
+        size = 9 + FONT_BONUS[0]  # 9 = taille par défaut de Windows
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+            tkfont.nametofont(name).configure(size=size)
+        style = ttk.Style(self)
+        self.option_clear()
+        if dark:
+            bg, field, fg, sel, btn = COLORS["panel"], "#2d2d2d", COLORS["fg"], "#2f6fc0", "#3c3c3c"
+            style.theme_use("clam")  # le thème Windows (vista) ne se recolore pas
+            style.configure(".", background=bg, foreground=fg, fieldbackground=field, bordercolor="#6a6a6a",
+                            lightcolor=field, darkcolor=bg, troughcolor=bg, selectbackground=sel,
+                            selectforeground="white", insertcolor=fg, arrowcolor=fg)
+            style.map(".", foreground=[("disabled", "#9a9a9a")])
+            style.configure("TButton", background=btn, padding=(8, 3))
+            style.configure("TScrollbar", background=btn, troughcolor=bg, bordercolor=bg, arrowcolor=fg)
+            style.map("TScrollbar", background=[("active", "#5a5a5a")])
+            style.map("TButton", background=[("pressed", "#5a5a5a"), ("active", "#4c4c4c")])
+            style.configure("Treeview", background=field, fieldbackground=field, foreground=fg)
+            style.map("Treeview", background=[("selected", sel)], foreground=[("selected", "white")])
+            style.configure("Treeview.Heading", background=btn, foreground=fg)
+            style.map("Treeview.Heading", background=[("active", "#4c4c4c")])
+            style.configure("TNotebook.Tab", background=field, padding=(10, 4))
+            style.map("TNotebook.Tab", background=[("selected", sel)], foreground=[("selected", "white")])
+            style.map("TCombobox", fieldbackground=[("readonly", field)], selectbackground=[("readonly", field)],
+                      selectforeground=[("readonly", fg)])
+            for w in ("TCheckbutton", "TRadiobutton"):
+                style.configure(w, indicatorbackground=field, indicatorforeground=fg)
+                style.map(w, background=[("active", bg)], indicatorbackground=[("selected", sel)])
+            for opt, val in (("*Label.background", bg), ("*Label.foreground", fg), ("*Frame.background", bg),
+                             ("*Text.background", field), ("*Text.foreground", fg), ("*Text.insertBackground", fg),
+                             ("*TCombobox*Listbox.background", field), ("*TCombobox*Listbox.foreground", fg),
+                             ("*TCombobox*Listbox.selectBackground", sel)):
+                self.option_add(opt, val)
+        elif "vista" in style.theme_names():
+            style.theme_use("vista")
+        style.configure("Treeview", rowheight=tkfont.nametofont("TkDefaultFont").metrics("linespace") + 8)
+
+    def set_setting(self, key, value):
+        """Enregistre un réglage d'affichage et reconstruit l'interface pour l'appliquer tout de suite."""
+        self.settings[key] = value
+        try:
+            with open(self.settings_path, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f)
+        except OSError:
+            pass  # réglage appliqué pour cette session seulement
+        tab, view, sel = self.nb.index("current"), self.view.get(), self.books.selection()
+        for w in self.winfo_children():
+            if not isinstance(w, tk.Toplevel):
+                w.destroy()
+        self._build()
+        self.view.set(view)
+        self.show_view()
+        self.refresh()
+        self.nb.select(tab)
+        if sel and self.books.exists(sel[0]):
+            self.books.selection_set(sel[0])
+        self.set_status("Affichage modifié.", "info")
 
     def _tree(self, parent, cols):
         """Crée un tableau (Treeview + barre de défilement) dans ``parent``.
@@ -737,6 +873,7 @@ class App(tk.Tk):
         rows = self.lib.search("" if field else text)
         if field:
             rows = [r for r in rows if text in (r[field] or "").lower()]
+        sel = self.books.selection()
         self.books.delete(*self.books.get_children())
         for r in rows:
             status = f"Prêté à {r['borrower']}" if r["borrower"] else "Disponible"
@@ -744,7 +881,36 @@ class App(tk.Tk):
                 r["isbn"] or "", r["title"], r["authors"], r["publisher"], r["year"], r["genre"],
                 fmt_date(r["read_date"]), place(r), status))
         self._resort(self.books)
+        if sel and self.books.exists(sel[0]):
+            self.books.selection_set(sel[0])  # la fiche du bas reste sur le livre, mise à jour
+        self.count.config(text=f"{len(rows)} livre{'s' if len(rows) > 1 else ''}")
         self.show_covers()
+        self.show_detail()
+
+    def show_detail(self):
+        """Affiche sous la liste la fiche du livre sélectionné, avec ses boutons d'action."""
+        for w in self.detail.winfo_children():
+            w.destroy()
+        self._detail_w = self.detail.winfo_width()
+        sel = self.books.selection()
+        book = self.lib.book(int(sel[0])) if sel else None
+        if not book:
+            ttk.Label(self.detail, text="Sélectionnez un livre pour afficher sa fiche ici.",
+                      foreground=COLORS["muted"], font=ui_font(11)).pack(anchor="w")
+            return
+        loan = self.lib.active_loan(book["id"])
+        left = ttk.Frame(self.detail)
+        left.pack(side="left", fill="y")
+        text = ttk.Frame(self.detail)
+        text.pack(side="left", fill="both", expand=True)
+        bar = ttk.Frame(text)
+        bar.pack(side="bottom", anchor="w", pady=(10, 0))  # en bas : visible même si le résumé est long
+        ttk.Button(bar, text="Enregistrer le retour" if loan else "Prêter…",
+                   command=lambda: self.run_action(book, loan, "return" if loan else "lend")).pack(side="left")
+        ttk.Button(bar, text="Modifier…", command=lambda: self.run_action(book, loan, "edit")).pack(side="left", padx=6)
+        ttk.Button(bar, text="Supprimer", command=self.delete_selected).pack(side="left")
+        self.detail_photo = book_details(text, book, loan, self.cover_path(book["id"]),
+                                         max(300, self._detail_w - 200), None, cover_parent=left)
 
     def sort_books(self, event=None):
         """Applique « Trier par » / « Décroissant » (les deux vues suivent l'ordre du tableau)."""
@@ -907,7 +1073,10 @@ class App(tk.Tk):
     def book_actions(self, book):
         """Ouvre la fiche (:class:`BookCard`) d'un livre et exécute l'action choisie."""
         loan = self.lib.active_loan(book["id"])
-        action = BookCard(self, book, loan, self.cover_path(book["id"])).show()
+        self.run_action(book, loan, BookCard(self, book, loan, self.cover_path(book["id"])).show())
+
+    def run_action(self, book, loan, action):
+        """Exécute une action de fiche (``"lend"``, ``"return"``, ``"edit"`` ou ``None``) puis rafraîchit."""
         if action == "lend":
             self.lend(book)
         elif action == "return":
@@ -964,12 +1133,6 @@ class App(tk.Tk):
         book = self._selected()
         if book:
             self.book_actions(book)
-
-    def edit_selected(self):
-        book = self._selected()
-        if book:
-            self.edit(book)
-            self.refresh()
 
     def delete_selected(self):
         book = self._selected()

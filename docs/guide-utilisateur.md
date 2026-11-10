@@ -147,6 +147,9 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
 ## Rechercher, trier, modifier, supprimer
 
 - **Affichage** : en haut à droite de l'onglet Bibliothèque, choisissez **Liste** (tableau) ou **Miniatures** (une vignette de couverture par livre, avec titre et auteur). Dans les miniatures, un clic sélectionne le livre et un double-clic ouvre sa fiche. Les livres sans couverture affichent leur titre sur fond gris.
+- **Fiche du livre** : un clic sur un livre affiche sa fiche sous la liste : jaquette, éditeur, pages, emplacement, état du prêt et résumé complet (qui défile s'il est long). Les boutons **Prêter…** (ou **Enregistrer le retour**), **Modifier…** et **Supprimer** s'y trouvent. La séparation entre la liste et la fiche se déplace à la souris.
+- **Nombre de livres** : à côté du champ **Rechercher**, le nombre de livres affichés, recherche comprise.
+- **Thème sombre et grands caractères** : dans le menu **Affichage**, cochez **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
 - **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. Avec **Chercher dans : Tout**, la recherche porte sur le titre, les auteurs, l'année, le genre, l'ISBN, le meuble et le nom de l'emprunteur. Choisissez **Titre**, **Auteur**, **Année** ou **Genre** pour ne chercher que dans ce champ, par exemple tous les livres du genre « Thriller ».
 - **Trier** : choisissez un critère dans **Trier par** (Titre, Auteur, Année, Genre) et cochez **Décroissant** pour inverser l'ordre ; cela vaut pour les deux affichages. En vue Liste, on peut aussi cliquer sur l'en-tête d'une colonne ; un second clic inverse l'ordre, et une flèche ▲ ▼ indique le tri en cours. Le tri est conservé après chaque scan ou modification. On peut trier par :
   - **Auteur** : par le nom de famille du premier auteur ;

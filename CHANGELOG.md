@@ -2,6 +2,13 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.6.0] - 2026-11-10
+
+### Ajouts
+- **Fiche sous la liste** : un clic sur un livre affiche sa jaquette, ses informations et son résumé complet sous la liste, avec les boutons *Prêter…* / *Enregistrer le retour*, *Modifier…* et *Supprimer*.
+- **Nombre de livres affichés** à côté du champ de recherche.
+- **Thème sombre** à fort contraste et **grands caractères**, dans le nouveau menu *Affichage*. Vos choix sont conservés.
+
 ## [1.5.1] - 2026-11-10
 
 ### Modifications
