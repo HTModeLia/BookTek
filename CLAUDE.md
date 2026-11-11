@@ -8,7 +8,7 @@ BookTek est un logiciel Windows de gestion de bibliothèque personnelle : on sca
 
 - **Utilisateur final** : particulier, notamment une personne de 65 ans. Interface simple, textes en français, fort contraste, rien de technique à l'écran.
 - **Mainteneur** : le propriétaire du dépôt. Il échange en français, demande des évolutions courtes (« possibilité de… ») et dit « publie » pour sortir une version.
-- **État** : version **1.9.0** (11/11/2026). L'historique complet est dans [CHANGELOG.md](CHANGELOG.md).
+- **État** : version **1.10.0** (11/11/2026). L'historique complet est dans [CHANGELOG.md](CHANGELOG.md).
 
 ## Où trouver quoi
 

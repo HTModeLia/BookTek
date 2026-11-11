@@ -2,6 +2,13 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.10.0] - 2026-11-11
+
+### Ajouts
+- **Liste par auteur, année ou genre à gauche** : à cocher dans le menu *Affichage*. Un panneau à gauche de la bibliothèque liste les auteurs (triés par nom de famille), les années ou les genres, chacun avec son nombre de livres. Un clic sur une ligne n'affiche que les livres correspondants, en *Liste* comme en *Miniatures* ; « (Tous les livres) » les réaffiche tous.
+- **Actualiser les informations** d'un livre : bouton dans *Modifier…*, qui récupère en ligne titre, auteurs, éditeur, année, genre, pages et résumé. Vous vérifiez avant d'enregistrer ; l'emplacement et les notes ne changent pas.
+- **Clic droit sur un livre**, en Liste comme en Miniatures : *Actualiser la jaquette…* (vous choisissez parmi les jaquettes trouvées), *Actualiser les informations…* (les changements s'affichent et ne sont enregistrés qu'après confirmation) et *Modifier…*.
+
 ## [1.9.0] - 2026-11-11
 
 ### Ajouts

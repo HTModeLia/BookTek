@@ -50,6 +50,9 @@ LABELS = {
 #: Champs proposés pour filtrer (« Tout » = recherche plein texte) et trier la bibliothèque.
 SEARCH_IN = {"Tout": None, "Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
 SORTS = {"Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
+#: Regroupements du panneau de gauche (menu Affichage), et libellé des livres sans valeur.
+GROUPS = {"Auteur": "authors", "Année": "year", "Genre": "genre"}
+NO_VALUE = "(non renseigné)"
 #: Couleurs du thème clair : messages (ok, warn, err, info), fond des zones blanches (panel),
 #: texte (fg), texte secondaire (muted), case sans couverture (tile, tile_fg), une ligne sur deux des tableaux (stripe).
 LIGHT = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8",
@@ -129,6 +132,13 @@ def sort_key(text, col=""):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", text)]
 
 
+def group_names(value, field):
+    """Groupes du panneau de gauche auxquels appartient un livre : un par auteur
+    (``authors`` séparés par des virgules), sinon la valeur du champ ; :data:`NO_VALUE` si vide."""
+    names = value.split(",") if field == "authors" else [value or ""]
+    return [n.strip() for n in names if n.strip()] or [NO_VALUE]
+
+
 # ---------------------------------------------------------------------------
 # Boîtes de dialogue
 # ---------------------------------------------------------------------------
@@ -177,13 +187,19 @@ class BookForm(Dialog):
     enregistrer par l'appelant si le formulaire est validé.
     """
 
+    #: Champs remplacés par *Actualiser les informations* (les autres sont propres à l'utilisateur).
+    ONLINE = ("title", "authors", "publisher", "year", "genre", "pages", "summary")
+
     def __init__(self, master, data, title="Livre", cover=None):
         super().__init__(master, title)
         self.vars = {}
         self.cover_src = None
+        # Colonne de droite : jaquette (en modification) puis tous les boutons, Enregistrer et Annuler en bas.
+        side = ttk.Frame(self.body)
+        side.grid(row=0, column=2, rowspan=len(FIELDS), sticky="ns", padx=(14, 0))
+        ttk.Button(side, text="Annuler", command=self.destroy).pack(side="bottom", fill="x", pady=(4, 3))
+        ttk.Button(side, text="Enregistrer", command=self.save).pack(side="bottom", fill="x")
         if cover is not None:
-            side = ttk.Frame(self.body)
-            side.grid(row=0, column=2, rowspan=len(FIELDS), sticky="n", padx=(14, 0))
             self.cover_label = ttk.Label(side, text="Pas de jaquette", width=20, anchor="center")
             self.cover_label.pack(pady=(3, 6))
             ttk.Button(side, text="Changer la jaquette…", command=self.pick_cover).pack(fill="x")
@@ -191,6 +207,8 @@ class BookForm(Dialog):
                 self.search_btn = ttk.Button(side, text="Rechercher une jaquette…", command=self.search_cover)
                 self.search_btn.pack(fill="x", pady=(4, 0))
             self._preview(cover)
+        self.info_btn = ttk.Button(side, text="Actualiser les informations", command=self.refresh_info)
+        self.info_btn.pack(fill="x", pady=(4, 0))
         for r, f in enumerate(FIELDS):
             ttk.Label(self.body, text=LABELS[f] + " :").grid(row=r, column=0, sticky="ne", padx=(0, 8), pady=3)
             if f in ("summary", "notes"):
@@ -202,10 +220,6 @@ class BookForm(Dialog):
                 w.insert(0, fmt_date(value) if f == "read_date" else value)
             w.grid(row=r, column=1, sticky="we", pady=3)
             self.vars[f] = w
-        bar = ttk.Frame(self.body)
-        bar.grid(row=len(FIELDS), column=0, columnspan=2, pady=(10, 0), sticky="e")
-        ttk.Button(bar, text="Enregistrer", command=self.save).pack(side="left", padx=4)
-        ttk.Button(bar, text="Annuler", command=self.destroy).pack(side="left")
         # Entrée valide le formulaire, sauf dans les champs Résumé et Notes (multilignes).
         self.bind("<Return>", lambda e: self.save() if not isinstance(e.widget, tk.Text) else None)
         # Focus sur le premier champ utile : titre si l'ISBN est connu mais pas
@@ -213,6 +227,41 @@ class BookForm(Dialog):
         # remplie, ISBN pour une saisie entièrement manuelle.
         focus = "title" if data.get("isbn") and not data.get("title") else "location" if data.get("title") else "isbn"
         self.vars[focus].focus_set()
+
+    def refresh_info(self):
+        """Recherche en ligne (:func:`lookup.fetch`, dans un thread) les informations de l'ISBN saisi.
+
+        Les champs trouvés (:attr:`ONLINE`) remplacent ceux du formulaire ;
+        rien n'est enregistré avant **Enregistrer**.
+        """
+        isbn = normalize(self.vars["isbn"].get().strip())
+        if not isbn:
+            messagebox.showinfo("Informations", "Saisissez un ISBN valide pour chercher les informations en ligne.",
+                                parent=self)
+            return
+        self.info_btn.configure(state="disabled", text="Recherche en cours…")
+        app = self.master
+        threading.Thread(target=lambda: app.post(self._info_found, lookup.fetch(isbn)), daemon=True).start()
+
+    def _info_found(self, info):
+        """Fin de :meth:`refresh_info`, dans le thread de l'interface."""
+        if not self.winfo_exists():  # formulaire fermé pendant la recherche
+            return
+        self.info_btn.configure(state="normal", text="Actualiser les informations")
+        found = [f for f in self.ONLINE if (info or {}).get(f)]
+        if not found:
+            messagebox.showinfo("Informations", "Aucune information trouvée en ligne pour cet ISBN.", parent=self)
+            return
+        for f in found:
+            w = self.vars[f]
+            if isinstance(w, tk.Text):
+                w.delete("1.0", "end")
+                w.insert("1.0", info[f])
+            else:
+                w.delete(0, "end")
+                w.insert(0, info[f])
+        messagebox.showinfo("Informations", "Informations mises à jour : vérifiez-les puis cliquez sur Enregistrer.",
+                            parent=self)
 
     def _preview(self, src):
         """Affiche l'image ``src`` (chemin ou octets) dans l'aperçu ; retourne ``False`` si elle est illisible."""
@@ -524,9 +573,9 @@ class CoverGrid(ttk.Frame):
     TILE = 124  # largeur d'une case, marges comprises (pixels)
     W, H = 100, 150  # taille maximale d'une miniature
 
-    def __init__(self, master, on_select, on_open):
+    def __init__(self, master, on_select, on_open, on_menu):
         super().__init__(master)
-        self.on_select, self.on_open = on_select, on_open
+        self.on_select, self.on_open, self.on_menu = on_select, on_open, on_menu
         self.canvas = tk.Canvas(self, highlightthickness=0, bg=COLORS["panel"])
         sb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=sb.set)
@@ -581,6 +630,7 @@ class CoverGrid(ttk.Frame):
             for w in (tile, *tile.winfo_children()):
                 w.bind("<Button-1>", lambda e, i=iid: self.select(i))
                 w.bind("<Double-1>", lambda e, i=iid: self.on_open(i))
+                w.bind("<Button-3>", lambda e, i=iid: (self.select(i), self.on_menu(e)))
             self.tiles[iid] = tile
         self.cols = 0  # force la remise en grille
         self.update_idletasks()  # sinon les nouvelles cases ont une largeur demandée de 1 px : tout sur une ligne
@@ -638,6 +688,7 @@ class App(tk.Tk):
         self.q = queue.Queue()
         self.pending = set()  # ISBN en cours de recherche en ligne
         self.update_ready = None
+        self.group_value = None  # groupe choisi dans le panneau de gauche (None = tous les livres)
         self._update_busy = False  # une vérification de mise à jour est en cours
         self.settings_path = os.path.join(os.path.dirname(db_path), "settings.json")
         try:
@@ -666,7 +717,8 @@ class App(tk.Tk):
         m.add_command(label="Quitter", command=self.destroy)
         menubar.add_cascade(label="Fichier", menu=m)
         m = tk.Menu(menubar, tearoff=False)
-        for key, label in (("dark", "Thème sombre"), ("large", "Grands caractères")):
+        for key, label in (("dark", "Thème sombre"), ("large", "Grands caractères"),
+                           ("groups", "Liste par auteur, année ou genre à gauche")):
             var = tk.BooleanVar(self, value=bool(self.settings.get(key)))
             m.add_checkbutton(label=label, variable=var, command=lambda k=key, v=var: self.set_setting(k, v.get()))
         m.add_separator()
@@ -736,9 +788,26 @@ class App(tk.Tk):
             ttk.Radiobutton(bar, text=txt, value=val, variable=self.view, command=self.show_view).pack(side="right", padx=4)
         ttk.Label(bar, text="Affichage :").pack(side="right")
         # Liste (ou miniatures), puis fiche du livre sélectionné en bas ou à droite ; la séparation se déplace à la souris.
+        # Si activé (menu Affichage), panneau de gauche : auteurs, années ou genres, un clic filtre la bibliothèque.
+        outer = ttk.PanedWindow(lib, orient="horizontal")
+        outer.pack(fill="both", expand=True)
+        self.group_tree = None
+        if self.settings.get("groups"):
+            side = ttk.Frame(outer, width=250, padding=(0, 0, 8, 0))
+            side.pack_propagate(False)
+            outer.add(side, weight=0)
+            row = ttk.Frame(side)
+            row.pack(fill="x", pady=(0, 6))
+            ttk.Label(row, text="Par :").pack(side="left")
+            self.group_by = ttk.Combobox(row, values=list(GROUPS), state="readonly", width=8)
+            self.group_by.set(self.settings.get("group_by", "Auteur"))
+            self.group_by.bind("<<ComboboxSelected>>", self._group_changed)
+            self.group_by.pack(side="left", padx=6)
+            self.group_tree = self._tree(side, (("name", "Auteur", 150), ("n", "Livres", 55)))
+            self.group_tree.bind("<<TreeviewSelect>>", self._group_selected)
         self.detail_right = self.settings.get("detail") == "right"  # menu Affichage
-        paned = ttk.PanedWindow(lib, orient="horizontal" if self.detail_right else "vertical")
-        paned.pack(fill="both", expand=True)
+        paned = ttk.PanedWindow(outer, orient="horizontal" if self.detail_right else "vertical")
+        outer.add(paned, weight=1)
         self.view_box = ttk.Frame(paned)
         self.detail = ttk.Frame(paned, width=460, height=280, padding=(12, 0, 0, 0) if self.detail_right else (4, 10, 4, 0))
         self.detail.pack_propagate(False)  # taille fixée par la séparation, pas par le contenu
@@ -753,7 +822,10 @@ class App(tk.Tk):
         self.books.bind("<Double-1>", lambda e: self.open_selected())
         self.books.bind("<<TreeviewSelect>>", lambda e: self.show_detail())
         self.books._on_sort = self._books_sorted  # synchronise « Trier par » avec un clic sur un en-tête
-        self.covers = CoverGrid(self.view_box, on_select=self.books.selection_set, on_open=lambda iid: self.open_selected())
+        self.covers = CoverGrid(self.view_box, on_select=self.books.selection_set, on_open=lambda iid: self.open_selected(),
+                                on_menu=self.book_menu)
+        self.books.bind("<Button-3>", lambda e: self.books.identify_row(e.y) and (
+            self.books.selection_set(self.books.identify_row(e.y)), self.book_menu(e)))
 
         # Onglet prêts en cours. iid = id du livre (un seul prêt en cours par livre).
         loans = ttk.Frame(self.nb, padding=6)
@@ -993,6 +1065,8 @@ class App(tk.Tk):
         rows = self.lib.search("" if field else text)
         if field:
             rows = [r for r in rows if text in (r[field] or "").lower()]
+        if self.group_tree:
+            rows = self._fill_groups(rows)
         sel = self.books.selection()
         self.books.delete(*self.books.get_children())
         for r in rows:
@@ -1006,6 +1080,51 @@ class App(tk.Tk):
         self.count.config(text=f"{len(rows)} livre{'s' if len(rows) > 1 else ''}")
         self.show_covers()
         self.show_detail()
+
+    def _fill_groups(self, rows):
+        """Remplit le panneau de gauche à partir des livres ``rows`` (recherche appliquée)
+        et retourne ceux du groupe sélectionné (tous si « Tous les livres »).
+
+        Chaque valeur du champ choisi y figure avec son nombre de livres, triée
+        comme « Trier par » (auteurs par nom de famille), « non renseigné » en dernier.
+        """
+        label = self.group_by.get()
+        field = GROUPS[label]
+        counts = {}
+        for r in rows:
+            for n in group_names(r[field], field):
+                counts[n] = counts.get(n, 0) + 1
+        if self.group_value not in counts:
+            self.group_value = None
+        tree = self.group_tree
+        tree._labels["name"] = label
+        tree.heading("name", text=label)
+        tree.delete(*tree.get_children())
+        tree.insert("", "end", iid="*", values=("(Tous les livres)", len(rows)))
+        names = sorted(counts, key=lambda n: (n == NO_VALUE, sort_key(n, field)))
+        for i, n in enumerate(names):
+            tree.insert("", "end", iid=str(i), values=(n, counts[n]))
+        iid = "*" if self.group_value is None else str(names.index(self.group_value))
+        tree.selection_set(iid)
+        tree.see(iid)
+        self._resort(tree)
+        if self.group_value is None:
+            return rows
+        return [r for r in rows if self.group_value in group_names(r[field], field)]
+
+    def _group_selected(self, event=None):
+        """Clic dans le panneau de gauche : n'affiche que les livres du groupe choisi."""
+        sel = self.group_tree.selection()
+        value = None if not sel or sel[0] == "*" else self.group_tree.set(sel[0], "name")
+        if value != self.group_value:  # sinon : sélection remise par _fill_groups, rien à faire
+            self.group_value = value
+            self.refresh_books()
+
+    def _group_changed(self, event=None):
+        """Changement de regroupement (auteur, année, genre) : retour à « Tous les livres »."""
+        self.settings["group_by"] = self.group_by.get()  # shortcut: gardé en mémoire, enregistré au prochain réglage d'affichage
+        self.group_value = None
+        self.refresh_books()
 
     def show_detail(self):
         """Affiche sous la liste la fiche du livre sélectionné, avec ses boutons d'action."""
@@ -1066,6 +1185,9 @@ class App(tk.Tk):
         """Affiche l'onglet Bibliothèque et y sélectionne le livre (s'il est visible avec le filtre actuel)."""
         self.nb.select(0)
         iid = str(book_id)
+        if not self.books.exists(iid) and self.group_value is not None:
+            self.group_value = None  # livre scanné hors du groupe affiché à gauche : on revient à tous les livres
+            self.refresh_books()
         if self.books.exists(iid):
             self.books.selection_set(iid)
             self.books.see(iid)
@@ -1227,6 +1349,73 @@ class App(tk.Tk):
             return
         suffix = f", retour prévu le {fmt_date(due)}" if due else ""
         self.set_status(f"« {book['title']} » prêté à {who}{suffix}.", "ok")
+
+    def book_menu(self, event):
+        """Menu du clic droit sur un livre (liste ou miniatures) : actualisations directes, sans formulaire."""
+        book = self._selected()
+        if not book:
+            return
+        menu = tk.Menu(self, tearoff=False)
+        if Image:  # sans Pillow, les jaquettes trouvées ne pourraient pas être montrées
+            menu.add_command(label="Actualiser la jaquette…", command=lambda: self.refresh_cover(book))
+        menu.add_command(label="Actualiser les informations…", command=lambda: self.refresh_info(book))
+        menu.add_separator()
+        menu.add_command(label="Modifier…", command=lambda: self.run_action(book, None, "edit"))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def refresh_cover(self, book):
+        """Cherche en ligne les jaquettes du livre (dans un thread) ; celle choisie est enregistrée aussitôt."""
+        self.set_status(f"Recherche de jaquettes pour « {book['title']} »…", "info")
+        args = (book["isbn"], book["title"], book["authors"])
+        threading.Thread(target=lambda: self.post(self._covers_found, book["id"], lookup.find_covers(*args)),
+                         daemon=True).start()
+
+    def _covers_found(self, book_id, images):
+        """Fin de :meth:`refresh_cover` : choix parmi les jaquettes trouvées (:class:`CoverPicker`)."""
+        book = self.lib.book(book_id)
+        if not book:  # supprimé pendant la recherche
+            return
+        if not images:
+            self.set_status(f"Aucune jaquette trouvée en ligne pour « {book['title']} ».", "warn")
+            return
+        img = CoverPicker(self, images).show()
+        if img:
+            self.change_cover(book, img)
+            self.refresh()
+            self.set_status(f"Jaquette actualisée : « {book['title']} ».", "ok")
+        else:
+            self.set_status("Jaquette inchangée.", "info")
+
+    def refresh_info(self, book):
+        """Cherche en ligne les informations du livre d'après son ISBN (dans un thread)."""
+        if not book["isbn"]:
+            self.set_status(f"« {book['title']} » n'a pas d'ISBN : impossible de chercher ses informations.", "err")
+            return
+        self.set_status(f"Recherche des informations de « {book['title']} »…", "info")
+        threading.Thread(target=lambda: self.post(self._info_found, book["id"], lookup.fetch(book["isbn"])),
+                         daemon=True).start()
+
+    def _info_found(self, book_id, info):
+        """Fin de :meth:`refresh_info` : montre les champs qui changent (:attr:`BookForm.ONLINE`)
+        et les enregistre après confirmation, pour ne pas écraser une correction sans le voir."""
+        book = self.lib.book(book_id)
+        if not book:
+            return
+        data = {f: book[f] for f in FIELDS}
+        new = {f: str(info[f]) for f in BookForm.ONLINE if (info or {}).get(f) and str(info[f]) != (data[f] or "")}
+        if not new:
+            self.set_status(f"Rien de nouveau en ligne pour « {book['title']} ».", "info")
+            return
+        cut = lambda s: s if len(s) <= 90 else s[:89].rstrip() + "…"
+        lines = "\n".join(f"{LABELS[f]} : {cut(v)}" for f, v in new.items())
+        if not messagebox.askyesno("Actualiser les informations",
+                                   f"Remplacer dans la fiche « {book['title']} » :\n\n{lines}", parent=self):
+            self.set_status("Fiche inchangée.", "info")
+            return
+        data.update(new)
+        self.lib.update_book(book_id, data)
+        self.refresh()
+        self.set_status(f"Informations actualisées : « {data['title']} ».", "ok")
 
     def edit(self, book):
         """Ouvre le formulaire de modification du livre et enregistre les changements.

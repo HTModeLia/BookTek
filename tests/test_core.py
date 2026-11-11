@@ -104,6 +104,18 @@ class IsbnTest(unittest.TestCase):
         self.assertIsNone(normalize("abc"))
 
 
+class GroupTest(unittest.TestCase):
+    """Panneau de gauche : un groupe par auteur, valeur vide regroupée sous « non renseigné »."""
+
+    def test_group_names(self):
+        from booktek.app import NO_VALUE, group_names
+        self.assertEqual(group_names("Mireille Calmel, Juliette Benzoni", "authors"),
+                         ["Mireille Calmel", "Juliette Benzoni"])
+        self.assertEqual(group_names("2012", "year"), ["2012"])
+        self.assertEqual(group_names("", "genre"), [NO_VALUE])
+        self.assertEqual(group_names(" , ", "authors"), [NO_VALUE])
+
+
 class LibraryTest(unittest.TestCase):
     """Base SQLite en mémoire : prêts, retours, recherche, complément des fiches."""
 
