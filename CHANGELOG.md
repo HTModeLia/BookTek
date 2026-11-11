@@ -2,6 +2,11 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.9.0] - 2026-11-11
+
+### Ajouts
+- **Importer une liste d'ISBN** : menu *Fichier > Importer une liste d'ISBN (texte ou CSV)…*. BookTek ajoute chaque livre de la liste (un par ligne ; dans un tableau, le premier ISBN de la ligne est retenu), ignore ceux déjà présents, puis propose de compléter les fiches via Internet : titre, auteur, éditeur, résumé et couverture.
+
 ## [1.8.0] - 2026-11-11
 
 ### Ajouts

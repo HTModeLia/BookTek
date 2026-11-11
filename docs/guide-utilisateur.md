@@ -11,6 +11,7 @@
 - [L'annuaire des emprunteurs](#lannuaire-des-emprunteurs)
 - [Rechercher, trier, modifier, supprimer](#rechercher-trier-modifier-supprimer)
 - [Importer une collection Book Collector](#importer-une-collection-book-collector)
+- [Importer une liste d'ISBN](#importer-une-liste-disbn)
 - [Exporter vers Excel](#exporter-vers-excel)
 - [Mises à jour](#mises-à-jour)
 - [Sauvegarder ses données](#sauvegarder-ses-données)
@@ -180,6 +181,16 @@ Si vos livres sont déjà catalogués dans *Book Collector* (Collectorz.com) :
 Les couvertures de Book Collector ne sont pas importées. Certaines éditions (clubs de livres, éditions anciennes) n'ont de couverture dans aucun catalogue : la fiche s'affiche alors sans image.
 
 > Si un livre importé n'est pas retrouvé quand vous le scannez, son ISBN est probablement faux dans le fichier d'origine. Corrigez-le avec **Modifier…**.
+
+## Importer une liste d'ISBN
+
+Pour ajouter d'un coup des livres dont vous avez déjà les ISBN (liste tapée, tableau Excel enregistré en CSV) :
+
+1. Menu **Fichier > Importer une liste d'ISBN (texte ou CSV)…**, puis choisissez le fichier.
+2. BookTek lit **un ISBN par ligne** : dans un tableau, c'est le premier ISBN de chaque ligne qui est retenu (les autres colonnes, par exemple d'autres éditions, sont ignorées). Les lignes sans ISBN valide et les livres déjà présents sont ignorés.
+3. Les livres sont créés avec leur ISBN comme titre provisoire. Acceptez de **compléter les fiches via Internet** : le vrai titre, l'auteur, le résumé et la couverture sont alors récupérés.
+
+Si un livre garde son ISBN pour titre, aucun catalogue ne le connaît : corrigez sa fiche avec **Modifier…**.
 
 ## Exporter vers Excel
 

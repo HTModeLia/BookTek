@@ -17,7 +17,7 @@ sys.path.insert(0, ROOT)
 
 from booktek import bkc_import  # noqa: E402
 from booktek.db import Library  # noqa: E402
-from booktek.isbn import normalize, to10  # noqa: E402
+from booktek.isbn import find_in_lines, normalize, to10  # noqa: E402
 from booktek.lookup import _bnf_pages, _bnf_person  # noqa: E402
 
 
@@ -89,6 +89,15 @@ class IsbnTest(unittest.TestCase):
         self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")
         self.assertEqual(_bnf_pages("1 vol. ; 22 cm"), "")
 
+    def test_find_in_lines(self):
+        """Premier ISBN valide de chaque ligne, doublons et autres colonnes ignorés."""
+        text = ("Libellé;ISBN retenu;Autres éditions\n"
+                "Tome 1 3709;978-2-290-25473-8;9782744187742 (2005)\n"
+                "sans isbn;;\n"
+                "2-7242-7568-3\n"
+                "doublon;9782290254738\n")
+        self.assertEqual(find_in_lines(text), ["9782290254738", "9782724275681"])
+
     def test_invalid(self):
         self.assertIsNone(normalize("9782290254739"))
         self.assertIsNone(normalize("3017620422003"))  # EAN non livre
@@ -121,6 +130,14 @@ class LibraryTest(unittest.TestCase):
         self.lib.fill_missing(self.bid, {"title": "Autre", "authors": "Julia Quinn"})
         b = self.lib.book(self.bid)
         self.assertEqual((b["title"], b["authors"]), ("Bridgerton 1&2", "Julia Quinn"))
+
+    def test_fill_missing_replaces_isbn_title(self):
+        """Titre provisoire (l'ISBN, import d'une liste) remplacé ; gardé si aucun titre trouvé."""
+        bid = self.lib.add_book({"isbn": "9782724275681", "title": "9782724275681"})
+        self.lib.fill_missing(bid, {"authors": "A"})
+        self.assertEqual(self.lib.book(bid)["title"], "9782724275681")
+        self.lib.fill_missing(bid, {"title": "Vrai titre"})
+        self.assertEqual(self.lib.book(bid)["title"], "Vrai titre")
 
     def test_search(self):
         self.assertEqual(len(self.lib.search("bridger")), 1)

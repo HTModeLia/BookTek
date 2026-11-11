@@ -20,6 +20,18 @@ def _clean(raw):
     return re.sub(r"[^0-9Xx]", "", raw or "").upper()
 
 
+def find_in_lines(text):
+    """ISBN-13 trouvés dans ``text`` : le premier ISBN valide de chaque ligne, sans doublon, dans l'ordre.
+
+    Une seule valeur par ligne, car un tableau (CSV…) peut contenir dans
+    d'autres colonnes les ISBN d'autres éditions : on retient la première
+    colonne qui en contient un.
+    """
+    found = (next(filter(None, map(normalize, re.findall(r"[0-9Xx-]{10,}", line))), None)
+             for line in text.splitlines())
+    return list(dict.fromkeys(filter(None, found)))
+
+
 def _check13(first12):
     """Calcule la clé de contrôle ISBN-13 à partir des 12 premiers chiffres."""
     total = sum(int(c) * (1 if i % 2 == 0 else 3) for i, c in enumerate(first12))

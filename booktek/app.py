@@ -36,7 +36,7 @@ from tkinter import font as tkfont
 
 from . import __version__, bkc_import, lookup, updater
 from .db import FIELDS, Library
-from .isbn import normalize
+from .isbn import find_in_lines, normalize
 
 #: Durée de prêt par défaut, en jours (date de retour proposée).
 LOAN_DAYS = 21
@@ -659,6 +659,7 @@ class App(tk.Tk):
         menubar = tk.Menu(self)
         m = tk.Menu(menubar, tearoff=False)
         m.add_command(label="Importer une collection Book Collector (.bkc)…", command=self.import_bkc)
+        m.add_command(label="Importer une liste d'ISBN (texte ou CSV)…", command=self.import_isbn_list)
         m.add_command(label="Compléter les fiches via Internet (résumés, couvertures…)", command=self.enrich)
         m.add_command(label="Exporter en CSV…", command=self.export_csv)
         m.add_separator()
@@ -1348,6 +1349,35 @@ class App(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Import impossible", str(exc), parent=self)
             return
+        self._import_items(items, "Le fichier .bkc ne contient pas les auteurs de façon exploitable.")
+
+    def import_isbn_list(self):
+        """Importe une liste d'ISBN (fichier texte ou CSV), voir :func:`booktek.isbn.find_in_lines`.
+
+        Chaque livre est créé avec son ISBN pour titre provisoire, remplacé
+        par le vrai titre lors du complément en ligne proposé ensuite.
+        """
+        path = filedialog.askopenfilename(parent=self, title="Liste d'ISBN",
+                                          filetypes=[("Texte ou CSV", "*.txt *.csv"), ("Tous les fichiers", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8-sig", errors="replace") as f:
+                isbns = find_in_lines(f.read())
+        except OSError as exc:
+            messagebox.showerror("Import impossible", str(exc), parent=self)
+            return
+        if not isbns:
+            messagebox.showerror("Import impossible", "Aucun ISBN valide dans ce fichier.", parent=self)
+            return
+        self._import_items([{"isbn": i, "title": i} for i in isbns], "Le fichier ne contient que les ISBN.")
+
+    def _import_items(self, items, note):
+        """Ajoute les livres ``items`` absents de la base, puis propose de compléter les fiches en ligne.
+
+        Les livres dont l'ISBN est déjà en base sont ignorés : l'import peut
+        être relancé sans créer de doublons.
+        """
         added = skipped = 0
         for it in items:
             if it["isbn"] and self.lib.book_by_isbn(it["isbn"]):
@@ -1359,8 +1389,8 @@ class App(tk.Tk):
         msg = f"{added} livre(s) importé(s), {skipped} déjà présent(s)."
         self.set_status(msg, "ok")
         if added and messagebox.askyesno(
-                "Import terminé", msg + "\n\nLe fichier .bkc ne contient pas les auteurs de façon exploitable.\n"
-                "Compléter maintenant les fiches (auteur, éditeur, année…) via Internet ?", parent=self):
+                "Import terminé", msg + f"\n\n{note}\n"
+                "Compléter maintenant les fiches (titre, auteur, éditeur, couverture…) via Internet ?", parent=self):
             self.enrich()
 
     def enrich(self):

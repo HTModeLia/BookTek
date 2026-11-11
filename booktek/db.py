@@ -193,18 +193,23 @@ class Library:
         """Complète uniquement les champs vides du livre avec ``info``.
 
         Les données déjà saisies (titre importé, corrections manuelles…) ne
-        sont jamais écrasées. Retourne ``True`` si au moins un champ a changé.
+        sont jamais écrasées. Un titre égal à l'ISBN est un titre provisoire
+        (import d'une liste d'ISBN) : il est remplacé. Retourne ``True`` si au
+        moins un champ a changé.
         """
         row = self.book(book_id)
         if row is None:
             return False
         data = {f: row[f] for f in FIELDS}
         changed = False
+        if data["title"] == data["isbn"]:
+            data["title"] = ""
         for f in ("title", "authors", "publisher", "year", "genre", "pages", "summary"):
             if not data[f] and info.get(f):
                 data[f] = info[f]
                 changed = True
         if changed:
+            data["title"] = data["title"] or row["title"]
             self.update_book(book_id, data)
         return changed
 
