@@ -20,6 +20,7 @@ threads déposent donc leurs résultats dans une file via :meth:`App.post`, que
 :meth:`App._poll` vide toutes les 100 ms depuis le thread de l'interface.
 """
 import csv
+import io
 import json
 import datetime as dt
 import os
@@ -171,8 +172,9 @@ class BookForm(Dialog):
 
     Avec ``cover`` (chemin de la couverture d'un livre existant), le
     formulaire affiche la jaquette et un bouton pour en choisir une autre :
-    l'image choisie est dans ``cover_src``, à enregistrer par l'appelant
-    si le formulaire est validé.
+    l'image choisie est dans ``cover_src`` (chemin d'un fichier, ou octets
+    d'une jaquette trouvée en ligne par *Rechercher une jaquette…*), à
+    enregistrer par l'appelant si le formulaire est validé.
     """
 
     def __init__(self, master, data, title="Livre", cover=None):
@@ -184,7 +186,10 @@ class BookForm(Dialog):
             side.grid(row=0, column=2, rowspan=len(FIELDS), sticky="n", padx=(14, 0))
             self.cover_label = ttk.Label(side, text="Pas de jaquette", width=20, anchor="center")
             self.cover_label.pack(pady=(3, 6))
-            ttk.Button(side, text="Changer la jaquette…", command=self.pick_cover).pack()
+            ttk.Button(side, text="Changer la jaquette…", command=self.pick_cover).pack(fill="x")
+            if Image:  # sans Pillow, les jaquettes trouvées ne pourraient pas être montrées
+                self.search_btn = ttk.Button(side, text="Rechercher une jaquette…", command=self.search_cover)
+                self.search_btn.pack(fill="x", pady=(4, 0))
             self._preview(cover)
         for r, f in enumerate(FIELDS):
             ttk.Label(self.body, text=LABELS[f] + " :").grid(row=r, column=0, sticky="ne", padx=(0, 8), pady=3)
@@ -209,12 +214,12 @@ class BookForm(Dialog):
         focus = "title" if data.get("isbn") and not data.get("title") else "location" if data.get("title") else "isbn"
         self.vars[focus].focus_set()
 
-    def _preview(self, path):
-        """Affiche l'image ``path`` dans l'aperçu ; retourne ``False`` si elle est illisible."""
-        if not (Image and os.path.exists(path)):
+    def _preview(self, src):
+        """Affiche l'image ``src`` (chemin ou octets) dans l'aperçu ; retourne ``False`` si elle est illisible."""
+        if not Image or (isinstance(src, str) and not os.path.exists(src)):
             return False
         try:
-            img = Image.open(path)
+            img = open_image(src)
             img.thumbnail((160, 240))
             self.photo = ImageTk.PhotoImage(img)  # référence à garder, sinon Tk efface l'image
         except Exception:
@@ -235,6 +240,34 @@ class BookForm(Dialog):
         self.cover_src = src
         if not Image:
             self.cover_label.configure(text=os.path.basename(src))
+
+    def search_cover(self):
+        """Cherche en ligne des jaquettes d'après l'ISBN, le titre et l'auteur saisis (dans un thread).
+
+        Une seule trouvée : elle est affichée dans l'aperçu. Plusieurs : on
+        choisit dans :class:`CoverPicker`.
+        """
+        get = lambda f: self.vars[f].get().strip()
+        isbn, title, authors = normalize(get("isbn")) if get("isbn") else None, get("title"), get("authors")
+        if not (isbn or title):
+            messagebox.showinfo("Jaquette", "Saisissez l'ISBN ou le titre du livre.", parent=self)
+            return
+        self.search_btn.configure(state="disabled", text="Recherche en cours…")
+        app = self.master
+        threading.Thread(target=lambda: app.post(self._covers_found, lookup.find_covers(isbn, title, authors)),
+                         daemon=True).start()
+
+    def _covers_found(self, images):
+        """Fin de :meth:`search_cover`, dans le thread de l'interface."""
+        if not self.winfo_exists():  # formulaire fermé pendant la recherche
+            return
+        self.search_btn.configure(state="normal", text="Rechercher une jaquette…")
+        if not images:
+            messagebox.showinfo("Jaquette", "Aucune jaquette trouvée en ligne pour ce livre.", parent=self)
+            return
+        img = images[0] if len(images) == 1 else CoverPicker(self, images).show()
+        if img and self._preview(img):
+            self.cover_src = img
 
     def save(self):
         """Valide la saisie (ISBN facultatif mais valide, titre obligatoire) et ferme."""
@@ -257,6 +290,69 @@ class BookForm(Dialog):
                 return
         self.result = out
         self.destroy()
+
+
+def open_image(src):
+    """Ouvre avec Pillow une image donnée par son chemin ou par ses octets."""
+    return Image.open(io.BytesIO(src) if isinstance(src, bytes) else src)
+
+
+class CoverPicker(Dialog):
+    """Choix d'une jaquette parmi celles trouvées en ligne : un clic sur une image la choisit.
+
+    ``result`` contient les octets de l'image choisie.
+    """
+    COLS = 4
+
+    def __init__(self, master, images):
+        super().__init__(master, "Choisir une jaquette")
+        ttk.Label(self.body, text=f"{len(images)} jaquettes trouvées : cliquez sur celle de votre édition.",
+                  font=ui_font(11)).grid(row=0, column=0, columnspan=self.COLS, sticky="w", pady=(0, 10))
+        self.photos = []  # références à garder, sinon Tk efface les images
+        for n, data in enumerate(images):
+            try:
+                img = open_image(data)
+                size = f"{img.width} × {img.height}"
+                img.thumbnail((140, 210))
+                photo = ImageTk.PhotoImage(img)
+            except Exception:
+                continue  # image illisible : ignorée
+            self.photos.append(photo)
+            b = ttk.Button(self.body, image=photo, text=size, compound="top",
+                           command=lambda d=data: self.choose(d))
+            b.grid(row=1 + n // self.COLS, column=n % self.COLS, padx=4, pady=4, sticky="n")
+        ttk.Button(self.body, text="Annuler", command=self.destroy).grid(
+            row=2 + len(images) // self.COLS, column=self.COLS - 1, sticky="e", pady=(10, 0))
+
+    def choose(self, data):
+        self.result = data
+        self.destroy()
+
+
+class AboutDialog(Dialog):
+    """Aide > À propos : version, dépôt, emplacement de la base et tableau des sources en ligne."""
+
+    def __init__(self, master, db_path):
+        super().__init__(master, "À propos de BookTek")
+        ttk.Label(self.body, text=f"BookTek {__version__}", font=ui_font(14, "bold")).pack(anchor="w")
+        ttk.Label(self.body, text="Gestion de bibliothèque par lecture d'ISBN.").pack(anchor="w")
+        link = ttk.Label(self.body, text=f"https://github.com/{updater.REPO}", foreground=COLORS["info"], cursor="hand2")
+        link.pack(anchor="w", pady=(6, 0))
+        link.bind("<Button-1>", lambda e: webbrowser.open(link.cget("text")))
+        ttk.Label(self.body, text=f"Base de données : {db_path}", foreground=COLORS["muted"]).pack(anchor="w", pady=(6, 12))
+        ttk.Label(self.body, text="Sources des données (API utilisées) — double-clic pour ouvrir la page",
+                  font=ui_font(10, "bold")).pack(anchor="w")
+        tree = ttk.Treeview(self.body, columns=("name", "use", "url"), show="headings", height=len(lookup.SOURCES),
+                            selectmode="browse")
+        for key, label, width in (("name", "Service", 210), ("use", "Utilisé pour", 260), ("url", "Adresse", 330)):
+            tree.heading(key, text=label, anchor="w")
+            tree.column(key, width=width, anchor="w")
+        tree.tag_configure("odd", background=COLORS["stripe"])
+        for n, row in enumerate(lookup.SOURCES):
+            tree.insert("", "end", values=row, tags=("odd",) if n % 2 else ())
+        tree.bind("<Double-1>", lambda e: tree.focus() and webbrowser.open(tree.set(tree.focus(), "url")))
+        tree.pack(fill="x", pady=(4, 12))
+        ttk.Button(self.body, text="Fermer", command=self.destroy).pack(anchor="e")
 
 
 class LendDialog(Dialog):
@@ -580,10 +676,6 @@ class App(tk.Tk):
         m = tk.Menu(menubar, tearoff=False)
         m.add_command(label="Rechercher une mise à jour", command=self.check_updates_manual)
         m.add_command(label="À propos de BookTek", command=self.about)
-        sources = tk.Menu(m, tearoff=False)
-        for name, url in lookup.SOURCES:
-            sources.add_command(label=f"{name} : {url}", command=lambda u=url: webbrowser.open(u))
-        m.add_cascade(label="Sources des données (API utilisées)", menu=sources)
         menubar.add_cascade(label="Aide", menu=m)
         self.config(menu=menubar)
 
@@ -1089,12 +1181,15 @@ class App(tk.Tk):
         return True
 
     def change_cover(self, book, src):
-        """Remplace la couverture du livre par l'image ``src`` (convertie en JPEG)."""
+        """Remplace la couverture du livre par l'image ``src`` (chemin ou octets, convertie en JPEG)."""
         path = self.cover_path(book["id"])
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
             if Image:
-                Image.open(src).convert("RGB").save(path, "JPEG", quality=90)
+                open_image(src).convert("RGB").save(path, "JPEG", quality=90)
+            elif isinstance(src, bytes):
+                with open(path, "wb") as f:
+                    f.write(src)
             else:
                 shutil.copyfile(src, path)
         except Exception as exc:
@@ -1426,11 +1521,8 @@ class App(tk.Tk):
         self.destroy()
 
     def about(self):
-        """Menu Aide > À propos : version, dépôt et emplacement de la base."""
-        messagebox.showinfo(
-            "À propos de BookTek",
-            f"BookTek {__version__}\nGestion de bibliothèque par lecture d'ISBN.\n\n"
-            f"https://github.com/{updater.REPO}\n\nBase de données :\n{self.db_path}", parent=self)
+        """Menu Aide > À propos : version, dépôt, base et sources des données (:class:`AboutDialog`)."""
+        AboutDialog(self, self.db_path).show()
 
 
 def main():

@@ -2,6 +2,14 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.8.0] - 2026-11-11
+
+### Ajouts
+- **Rechercher une jaquette** : dans *Modifier…*, un bouton cherche les jaquettes en ligne (ISBN, puis titre et auteur). Si plusieurs sont trouvées, elles s'affichent côte à côte pour choisir celle de votre édition.
+
+### Modifications
+- Les **sources des données** (API utilisées) sont maintenant présentées dans un tableau, dans *Aide > À propos de BookTek*, au lieu d'un sous-menu.
+
 ## [1.7.0] - 2026-11-11
 
 ### Ajouts

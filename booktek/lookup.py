@@ -38,12 +38,15 @@ HEADERS = {"User-Agent": "BookTek/1.0"}
 #: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
 KEYS = ("title", "authors", "publisher", "year", "genre", "pages", "summary", "cover")
 TIMEOUT = 8  # secondes, par requête
-#: Services interrogés, avec la page de leur API (cités dans le menu Aide > Sources des données).
+#: Services interrogés : (nom, usage, page de l'API), affichés dans Aide > À propos.
 SOURCES = (
-    ("BnF : catalogue général (API SRU)", "https://api.bnf.fr/fr/api-sru-catalogue-general"),
-    ("Google Books API", "https://developers.google.com/books/docs/v1/using"),
-    ("Open Library : Books API", "https://openlibrary.org/dev/docs/api/books"),
-    ("Open Library : Covers API", "https://openlibrary.org/dev/docs/api/covers"),
+    ("BnF : catalogue général (SRU)", "Titre, auteurs, éditeur, année, pages",
+     "https://api.bnf.fr/fr/api-sru-catalogue-general"),
+    ("Google Books API", "Fiche complète, résumé, genre, jaquettes",
+     "https://developers.google.com/books/docs/v1/using"),
+    ("Open Library : Books API", "Fiche, genre, jaquette", "https://openlibrary.org/dev/docs/api/books"),
+    ("Open Library : Search API", "Jaquettes d'autres éditions (par titre)", "https://openlibrary.org/dev/docs/api/search"),
+    ("Open Library : Covers API", "Jaquettes", "https://openlibrary.org/dev/docs/api/covers"),
 )
 
 
@@ -217,3 +220,67 @@ def fetch(isbn):
         except Exception:
             continue
     return result if result.get("title") else None
+
+
+def cover_urls(isbn, title, authors):
+    """Adresses de jaquettes possibles, de la plus sûre à la moins sûre, sans doublon.
+
+    D'abord celles de l'ISBN exact (Google Books, Open Library), puis celles
+    d'autres éditions trouvées par titre et premier auteur (recherche Google
+    Books et Open Library), utiles quand l'édition exacte n'a pas d'image.
+    """
+    urls = []
+
+    def add(url):
+        if url and url not in urls:
+            urls.append(url.replace("http://", "https://"))
+
+    if isbn:
+        for source in (google_books, open_library):
+            try:
+                add(source(isbn).get("cover"))
+            except Exception:
+                pass
+        add(f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false")
+    if title:
+        author = (authors or "").split(",")[0].strip()
+        q = f"intitle:{title}" + (f" inauthor:{author}" if author else "")
+        try:
+            data = _get_json("https://www.googleapis.com/books/v1/volumes?maxResults=20&q=" + urllib.parse.quote(q)
+                             + (f"&key={GOOGLE_KEY}" if GOOGLE_KEY else ""))
+            for item in data.get("items") or []:
+                add((item.get("volumeInfo", {}).get("imageLinks") or {}).get("thumbnail"))
+        except Exception:
+            pass
+        params = {"title": title, "limit": 20, "fields": "cover_i"}
+        if author:
+            params["author"] = author
+        try:
+            data = _get_json("https://openlibrary.org/search.json?" + urllib.parse.urlencode(params))
+            for doc in data.get("docs") or []:
+                if doc.get("cover_i"):
+                    add(f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-M.jpg")
+        except Exception:
+            pass
+    return urls
+
+
+def find_covers(isbn, title, authors, limit=12):
+    """Télécharge (en parallèle) les jaquettes de :func:`cover_urls` ; retourne au plus ``limit`` images (octets).
+
+    Les images identiques et les vignettes vides (moins de 1 Ko : images
+    « pas de couverture » des catalogues) sont écartées.
+    """
+    def get(url):
+        try:
+            return _get_bytes(url)
+        except Exception:
+            return b""
+
+    with ThreadPoolExecutor(8) as pool:
+        images = list(pool.map(get, cover_urls(isbn, title, authors)[:limit * 2]))
+    unique = []
+    for img in images:
+        if len(img) >= 1000 and img not in unique:
+            unique.append(img)
+    return unique[:limit]

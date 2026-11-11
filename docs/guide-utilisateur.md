@@ -63,7 +63,7 @@ Dans la fiche d'un livre, le bouton principal est présélectionné : appuyez su
 ### Un livre à la fois (mode Automatique)
 
 1. Scannez le livre.
-2. BookTek interroge en même temps trois catalogues en ligne (BnF, Google Books, Open Library) et combine leurs réponses pour remplir le plus de champs possible : titre, auteurs, éditeur, année, genre, nombre de pages, résumé et couverture. Pour un livre français, la BnF est prioritaire ; le résumé retenu est le plus complet. La liste des services utilisés, avec leurs adresses, est dans **Aide > Sources des données (API utilisées)**.
+2. BookTek interroge en même temps trois catalogues en ligne (BnF, Google Books, Open Library) et combine leurs réponses pour remplir le plus de champs possible : titre, auteurs, éditeur, année, genre, nombre de pages, résumé et couverture. Pour un livre français, la BnF est prioritaire ; le résumé retenu est le plus complet. La liste des services utilisés, avec leurs adresses, est dans **Aide > À propos de BookTek** (double-clic sur une ligne pour ouvrir la page).
 3. La fiche s'ouvre pré-remplie. Complétez si besoin l'[emplacement](#ranger-ses-livres--le-code-demplacement) et les **notes**, puis cliquez sur **Enregistrer** ou appuyez sur Entrée.
 
 Si le livre est introuvable en ligne, la fiche s'ouvre avec seulement l'ISBN : saisissez au moins le titre.
@@ -160,7 +160,10 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
   - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
   - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
 - **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.
-- **Jaquette** : dans **Modifier…**, la jaquette s'affiche à droite du formulaire ; **Changer la jaquette…** permet de choisir une image (JPEG, PNG…), enregistrée avec la fiche.
+- **Jaquette** : dans **Modifier…**, la jaquette s'affiche à droite du formulaire.
+  - **Changer la jaquette…** : choisir une image sur l'ordinateur (JPEG, PNG…).
+  - **Rechercher une jaquette…** : BookTek cherche en ligne d'après l'ISBN, le titre et l'auteur saisis. Si plusieurs jaquettes sont trouvées (autres éditions, autres tomes), elles s'affichent côte à côte avec leur taille en pixels : cliquez sur celle de votre édition.
+  - La nouvelle jaquette n'est enregistrée qu'avec **Enregistrer** ; **Annuler** garde l'ancienne.
 - En vue **Liste**, si la fenêtre est trop étroite pour toutes les colonnes, une barre de défilement horizontale apparaît sous le tableau.
 - **Supprimer** : sélectionnez un livre puis cliquez sur **Supprimer**. Un livre prêté ne peut pas être supprimé avant son retour. La suppression efface aussi l'historique de ses prêts.
 

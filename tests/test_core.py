@@ -70,6 +70,20 @@ class IsbnTest(unittest.TestCase):
         self.assertEqual(r["summary"], "un résumé bien plus long")
         self.assertEqual(r["cover"], b"G")
 
+    def test_find_covers_filters(self):
+        """Jaquettes : doublons et vignettes vides écartés, ordre conservé, URL en erreur ignorée."""
+        from unittest import mock
+        from booktek import lookup
+        imgs = {"a": b"A" * 2000, "b": b"A" * 2000, "c": b"tiny", "d": b"D" * 3000}
+
+        def get(url):
+            if url == "e":
+                raise OSError
+            return imgs[url]
+        with mock.patch.object(lookup, "cover_urls", return_value=["a", "b", "c", "e", "d"]), \
+                mock.patch.object(lookup, "_get_bytes", side_effect=get):
+            self.assertEqual(lookup.find_covers("x", "t", ""), [b"A" * 2000, b"D" * 3000])
+
     def test_bnf_pages(self):
         self.assertEqual(_bnf_pages("1 vol. (586 p.) ; 24 cm"), "586")
         self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")
