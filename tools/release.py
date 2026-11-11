@@ -102,6 +102,7 @@ def main():
     run(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q")
     print("Construction de l'exécutable…")
     run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
+        "--icon", os.path.join("booktek", "icon.ico"), "--add-data", f"{os.path.join('booktek', 'icon.ico')}{os.pathsep}booktek",
         "--name", "BookTek", "--distpath", "dist", "--workpath", "build", "main.py", capture=True)
     size = os.path.getsize(EXE)
     print(f"{EXE} ({size / 1e6:.1f} Mo)")

@@ -52,6 +52,24 @@ class IsbnTest(unittest.TestCase):
             with mock.patch.object(lookup, "_get_bytes", side_effect=OSError):
                 self.assertNotIn("cover", lookup.fetch("9782226440235"))
 
+    def test_fetch_merges_all_sources(self):
+        """Chaque source complète les autres ; résumé le plus long ; couverture de repli si la 1re échoue."""
+        from unittest import mock
+        from booktek import lookup
+        bnf = {"title": "Titre BnF", "authors": "A", "pages": "300", "cover": "https://bnf/c.jpg"}
+        google = {"title": "Titre Google", "summary": "court", "genre": "Romance", "cover": "https://g/c.jpg"}
+        ol = {"title": "Titre OL", "summary": "un résumé bien plus long", "publisher": "J'ai lu"}
+        get = lambda url: b"G" if url.startswith("https://g/") else (_ for _ in ()).throw(OSError())
+        with mock.patch.object(lookup, "bnf", return_value=bnf), \
+                mock.patch.object(lookup, "google_books", return_value=google), \
+                mock.patch.object(lookup, "open_library", return_value=ol), \
+                mock.patch.object(lookup, "_get_bytes", side_effect=get):
+            r = lookup.fetch("9782290254738")  # ISBN français : BnF prioritaire
+        self.assertEqual(r["title"], "Titre BnF")
+        self.assertEqual((r["genre"], r["publisher"], r["pages"]), ("Romance", "J'ai lu", "300"))
+        self.assertEqual(r["summary"], "un résumé bien plus long")
+        self.assertEqual(r["cover"], b"G")
+
     def test_bnf_pages(self):
         self.assertEqual(_bnf_pages("1 vol. (586 p.) ; 24 cm"), "586")
         self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")

@@ -63,7 +63,7 @@ Dans la fiche d'un livre, le bouton principal est présélectionné : appuyez su
 ### Un livre à la fois (mode Automatique)
 
 1. Scannez le livre.
-2. BookTek recherche le titre, les auteurs, l'éditeur, l'année et le nombre de pages dans les catalogues en ligne.
+2. BookTek interroge en même temps trois catalogues en ligne (BnF, Google Books, Open Library) et combine leurs réponses pour remplir le plus de champs possible : titre, auteurs, éditeur, année, genre, nombre de pages, résumé et couverture. Pour un livre français, la BnF est prioritaire ; le résumé retenu est le plus complet. La liste des services utilisés, avec leurs adresses, est dans **Aide > Sources des données (API utilisées)**.
 3. La fiche s'ouvre pré-remplie. Complétez si besoin l'[emplacement](#ranger-ses-livres--le-code-demplacement) et les **notes**, puis cliquez sur **Enregistrer** ou appuyez sur Entrée.
 
 Si le livre est introuvable en ligne, la fiche s'ouvre avec seulement l'ISBN : saisissez au moins le titre.
@@ -147,7 +147,8 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
 ## Rechercher, trier, modifier, supprimer
 
 - **Affichage** : en haut à droite de l'onglet Bibliothèque, choisissez **Liste** (tableau) ou **Miniatures** (une vignette de couverture par livre, avec titre et auteur). Dans les miniatures, un clic sélectionne le livre et un double-clic ouvre sa fiche. Les livres sans couverture affichent leur titre sur fond gris.
-- **Fiche du livre** : un clic sur un livre affiche sa fiche sous la liste : jaquette, éditeur, pages, emplacement, état du prêt et résumé complet (qui défile s'il est long). Les boutons **Prêter…** (ou **Enregistrer le retour**), **Modifier…** et **Supprimer** s'y trouvent. La séparation entre la liste et la fiche se déplace à la souris.
+- **Fiche du livre** : un clic sur un livre affiche sa fiche sous la liste : jaquette, éditeur, pages, emplacement, état du prêt et résumé complet (qui défile s'il est long). Les boutons **Prêter…** (ou **Enregistrer le retour**), **Modifier…** et **Supprimer** s'y trouvent. La séparation entre la liste et la fiche se déplace à la souris. Dans le menu **Affichage**, choisissez **Fiche du livre en bas** ou **Fiche du livre à droite** (pratique sur un écran large).
+- **Lignes alternées** : dans les tableaux, une ligne sur deux est légèrement colorée pour suivre une ligne d'un bout à l'autre sans se tromper.
 - **Nombre de livres** : à côté du champ **Rechercher**, le nombre de livres affichés, recherche comprise.
 - **Thème sombre et grands caractères** : dans le menu **Affichage**, cochez **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
 - **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. Avec **Chercher dans : Tout**, la recherche porte sur le titre, les auteurs, l'année, le genre, l'ISBN, le meuble et le nom de l'emprunteur. Choisissez **Titre**, **Auteur**, **Année** ou **Genre** pour ne chercher que dans ce champ, par exemple tous les livres du genre « Thriller ».
@@ -155,7 +156,7 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
   - **Auteur** : par le nom de famille du premier auteur ;
   - **Titre** ;
   - **Année** de parution ;
-  - **Genre** : à saisir dans la fiche du livre, ou récupéré en ligne par *Compléter les fiches via Internet* (Google Books, catégories souvent en anglais) ;
+  - **Genre** : à saisir dans la fiche du livre, ou récupéré en ligne par *Compléter les fiches via Internet* (Google Books ou Open Library, catégories souvent en anglais) ;
   - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
   - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
 - **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.

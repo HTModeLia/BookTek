@@ -1,6 +1,6 @@
 """Recherche des informations d'un livre en ligne à partir de son ISBN.
 
-Trois catalogues publics, sans clé d'API, sont interrogés :
+Trois catalogues publics sont interrogés (adresses des API dans :data:`SOURCES`) :
 
 =================  ==========================================================
 Source             Remarques
@@ -22,6 +22,7 @@ l'interface, elles sont appelées depuis un thread secondaire.
 """
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -37,6 +38,13 @@ HEADERS = {"User-Agent": "BookTek/1.0"}
 #: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
 KEYS = ("title", "authors", "publisher", "year", "genre", "pages", "summary", "cover")
 TIMEOUT = 8  # secondes, par requête
+#: Services interrogés, avec la page de leur API (cités dans le menu Aide > Sources des données).
+SOURCES = (
+    ("BnF : catalogue général (API SRU)", "https://api.bnf.fr/fr/api-sru-catalogue-general"),
+    ("Google Books API", "https://developers.google.com/books/docs/v1/using"),
+    ("Open Library : Books API", "https://openlibrary.org/dev/docs/api/books"),
+    ("Open Library : Covers API", "https://openlibrary.org/dev/docs/api/covers"),
+)
 
 
 def _get_json(url):
@@ -60,13 +68,19 @@ def _year(text):
 
 
 def google_books(isbn):
-    """Source Google Books (API ``volumes``). Le sous-titre est ajouté au titre."""
+    """Source Google Books (API ``volumes``), fiche détaillée comprise. Le sous-titre est ajouté au titre."""
     url = "https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(f"isbn:{isbn}")
     data = _get_json(url + (f"&key={GOOGLE_KEY}" if GOOGLE_KEY else ""))
     items = data.get("items") or []
     if not items:
         return {}
     v = items[0].get("volumeInfo", {})
+    if items[0].get("selfLink"):  # la recherche renvoie une fiche abrégée, souvent sans résumé ni genre
+        try:
+            key = f"?key={GOOGLE_KEY}" if GOOGLE_KEY else ""
+            v = {**v, **_get_json(items[0]["selfLink"] + key).get("volumeInfo", {})}
+        except Exception:
+            pass  # on garde la fiche abrégée
     title = v.get("title", "")
     if v.get("subtitle"):
         title = f"{title} : {v['subtitle']}"
@@ -93,6 +107,7 @@ def open_library(isbn):
         "authors": ", ".join(a.get("name", "") for a in b.get("authors") or []),
         "publisher": ", ".join(p.get("name", "") for p in b.get("publishers") or []),
         "year": _year(b.get("publish_date")),
+        "genre": ", ".join(s.get("name", "") for s in (b.get("subjects") or [])[:3]),
         "pages": str(b.get("number_of_pages") or ""),
         "cover": (b.get("cover") or {}).get("medium", ""),
     }
@@ -164,34 +179,41 @@ def bnf(isbn):
 
 
 def fetch(isbn):
-    """Interroge les catalogues et combine leurs réponses.
+    """Interroge tous les catalogues (en parallèle) et combine leurs réponses.
 
-    Les sources sont consultées dans l'ordre jusqu'à ce que tous les champs de
-    :data:`KEYS` soient remplis ; chaque champ vient de la première source qui
-    le fournit. La BnF passe en premier pour les ISBN français (``978-2``,
-    ``979-10``), en dernier pour les autres. Une source en erreur (réseau,
+    Pour avoir la fiche la plus complète, chaque champ vient de la première
+    source qui le fournit, dans l'ordre de fiabilité : BnF d'abord pour les
+    ISBN français (``978-2``, ``979-10``), en dernier pour les autres. Deux
+    exceptions : le **résumé** retenu est le plus long, et la **couverture**
+    est la première image qui se télécharge réellement, avec en dernier
+    recours la Covers API d'Open Library. Une source en erreur (réseau,
     quota, réponse inattendue) est simplement ignorée.
 
     Retourne un dict (seuls les champs trouvés sont présents), ou ``None`` si
     aucune source n'a fourni de titre. ``cover`` y contient l'image de
-    couverture déjà téléchargée (octets), absente si le téléchargement échoue.
+    couverture déjà téléchargée (octets), absente si aucune n'a pu l'être.
     """
     french = isbn.startswith(("9782", "97910"))
     sources = (bnf, google_books, open_library) if french else (google_books, open_library, bnf)
-    result = {}
-    for source in sources:
+
+    def safe(source):
         try:
-            info = source(isbn)
+            return source(isbn)
+        except Exception:
+            return {}
+
+    with ThreadPoolExecutor(len(sources)) as pool:
+        infos = list(pool.map(safe, sources))  # dans l'ordre de priorité, quel que soit le plus rapide
+    result = {}
+    for k in KEYS:
+        values = [info[k] for info in infos if info.get(k)]
+        if values and k != "cover":
+            result[k] = max(values, key=len) if k == "summary" else values[0]
+    covers = [info["cover"] for info in infos if info.get("cover")]
+    for url in covers + [f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false"]:
+        try:
+            result["cover"] = _get_bytes(url)  # ?default=false : erreur 404 plutôt qu'une image vide
+            break
         except Exception:
             continue
-        for k in KEYS:
-            if not result.get(k) and info.get(k):
-                result[k] = info[k]
-        if all(result.get(k) for k in KEYS):
-            break
-    if result.get("cover"):
-        try:
-            result["cover"] = _get_bytes(result["cover"])
-        except Exception:
-            del result["cover"]
     return result if result.get("title") else None

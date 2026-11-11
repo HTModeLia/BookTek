@@ -20,9 +20,11 @@ booktek/
 ├── isbn.py             validation et normalisation des ISBN
 ├── lookup.py           recherche des fiches en ligne
 ├── bkc_import.py       lecture des fichiers Book Collector
+├── icon.ico            icône (exe et fenêtres), générée par tools/make_icon.py
 └── updater.py          mise à jour automatique
 tests/                  tests unitaires (unittest)
-tools/release.py        publication d'une version
+tools/release.py        publication d'une version (embarque icon.ico : --icon et --add-data)
+tools/make_icon.py      dessin de l'icône avec Pillow ; à relancer après modification
 ```
 
 Dépendances entre modules :
@@ -113,7 +115,7 @@ Le tri en cours (`tree._sort_state`) est réappliqué après chaque rafraîchiss
 
 ### Affichage : thèmes et taille du texte
 
-- Réglages dans `settings.json` à côté de la base (`App.settings`) : `dark` (thème sombre) et `large` (grands caractères). Un fichier absent ou abîmé donne les réglages par défaut.
+- Réglages dans `settings.json` à côté de la base (`App.settings`) : `dark` (thème sombre), `large` (grands caractères) et `detail` (`"bottom"` ou `"right"` : position de la fiche, donc orientation du `PanedWindow`). Un fichier absent ou abîmé donne les réglages par défaut.
 - `_apply_theme()` remplit le dictionnaire global `COLORS` avec `LIGHT` ou `DARK`, règle la taille des polices nommées Tk (`TkDefaultFont`…) et `FONT_BONUS` (lu par `ui_font()`), puis configure le style ttk : thème `vista` en clair, `clam` recoloré en sombre (`vista` ne se recolore pas). Les widgets tk (non ttk) prennent leurs couleurs dans `COLORS` ou dans la base d'options (`option_add`).
 - Ces couleurs sont lues à la création des widgets : `set_setting()` détruit et reconstruit toute l'interface (`_build()`), puis restaure l'onglet, l'affichage et la sélection. Le texte de la recherche est perdu.
 - **Règle pour tout nouveau code d'interface** : pas de couleur ni de police écrite en dur. Utiliser `COLORS[...]` (`fg`, `muted`, `panel`, `ok`, `warn`, `err`, `info`…) et `ui_font(taille, "bold")`, sinon le thème sombre et les grands caractères ne s'appliquent pas. Le public visé inclut des personnes âgées : garder un fort contraste et des tailles généreuses.
@@ -123,6 +125,7 @@ Le tri en cours (`tree._sort_state`) est réappliqué après chaque rafraîchiss
 - `winfo_reqwidth()` d'un widget qui vient d'être créé vaut 1 tant que Tk n'a pas calculé la géométrie : appeler `update_idletasks()` avant de mesurer (voir `CoverGrid.show()`).
 - Une `PhotoImage` sans référence Python est effacée : la garder dans un attribut (`self.photo`, `self.detail_photo`).
 - Tk 8.6 ne lit pas le JPEG : toujours passer par Pillow (`Image`, `ImageTk`), qui peut être absent (`Image is None`).
+- **Lignes alternées** : le tag `odd` (couleur `COLORS["stripe"]`) est recalculé par `App._stripe()` à chaque `_resort()` et après chaque tri, car l'ordre affiché change. Il s'ajoute aux autres tags (`late`) sans les remplacer.
 - Les colonnes des tableaux ont `minwidth = width` : en fenêtre étroite, la barre de défilement horizontale apparaît au lieu d'écraser les colonnes.
 
 ### Threads
@@ -146,15 +149,15 @@ Trois traitements utilisent ce schéma :
 
 ## Recherche en ligne (`lookup.py`)
 
-Chaque source est une fonction `source(isbn) -> dict` qui retourne les champs trouvés (clés de `lookup.KEYS` : `title`, `authors`, `publisher`, `year`, `genre`, `pages`, `summary`, `cover`). `cover` est une URL, remplacée par les octets de l'image téléchargée à la fin de `fetch()`. `fetch()` interroge les sources dans l'ordre et garde, pour chaque champ, la première valeur trouvée. Une source en erreur est ignorée.
+Chaque source est une fonction `source(isbn) -> dict` qui retourne les champs trouvés (clés de `lookup.KEYS` : `title`, `authors`, `publisher`, `year`, `genre`, `pages`, `summary`, `cover`). `cover` est une URL, remplacée par les octets de l'image téléchargée à la fin de `fetch()`. `fetch()` interroge **toutes** les sources en parallèle (`ThreadPoolExecutor`), puis garde pour chaque champ la première valeur dans l'ordre de priorité ci-dessous. Exceptions : le résumé retenu est le plus long, et la couverture est la première URL qui se télécharge, avec en dernier recours `covers.openlibrary.org/b/isbn/<isbn>-M.jpg?default=false`. Une source en erreur est ignorée. Google Books relit la fiche détaillée du volume (`selfLink`), car la recherche renvoie une fiche abrégée, souvent sans résumé. Les adresses des API sont dans `lookup.SOURCES`, affichées dans *Aide > Sources des données*.
 
 | Source | Ordre (ISBN 978-2 / 979-10) | Ordre (autres) | Remarques |
 |---|---|---|---|
 | BnF (API SRU, Dublin Core) | 1 | 3 | Excellente pour les éditions françaises, y compris les clubs. Repli sur l'ISBN-10 pour les anciennes notices. |
 | Google Books | 2 | 1 | Clé d'API dans `booktek/_key.py` (non versionné, voir [publier-une-version.md](publier-une-version.md)) ; sans clé, erreur 429 fréquente. Seule source du genre. |
-| Open Library | 3 | 2 | Surtout anglophone |
+| Open Library | 3 | 2 | Surtout anglophone ; genre tiré des 3 premiers sujets. Covers API en repli pour la couverture. |
 
-Ajouter une source : écrire une fonction avec la même signature, puis l'insérer dans les tuples `sources` de `fetch()`.
+Ajouter une source : écrire une fonction avec la même signature, l'insérer dans les tuples `sources` de `fetch()` et ajouter son adresse à `lookup.SOURCES`.
 
 ## Import Book Collector (`bkc_import.py`)
 

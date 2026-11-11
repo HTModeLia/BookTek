@@ -29,6 +29,7 @@ import shutil
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
@@ -49,12 +50,14 @@ LABELS = {
 SEARCH_IN = {"Tout": None, "Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
 SORTS = {"Titre": "title", "Auteur": "authors", "Année": "year", "Genre": "genre"}
 #: Couleurs du thème clair : messages (ok, warn, err, info), fond des zones blanches (panel),
-#: texte (fg), texte secondaire (muted), case sans couverture (tile, tile_fg).
+#: texte (fg), texte secondaire (muted), case sans couverture (tile, tile_fg), une ligne sur deux des tableaux (stripe).
 LIGHT = {"ok": "#1b7f3b", "warn": "#b36b00", "err": "#c0262d", "info": "#1f5fa8",
-         "panel": "white", "fg": "black", "muted": "#555", "tile": "#e6e6e6", "tile_fg": "#444"}
+         "panel": "white", "fg": "black", "muted": "#555", "tile": "#e6e6e6", "tile_fg": "#444",
+         "stripe": "#e8f0fb"}
 #: Thème sombre à fort contraste (texte presque blanc, couleurs vives) : lisible sans fatigue.
 DARK = {"ok": "#6ee08f", "warn": "#ffc14d", "err": "#ff8080", "info": "#7cc0ff",
-        "panel": "#1e1e1e", "fg": "#f2f2f2", "muted": "#d0d0d0", "tile": "#3a3a3a", "tile_fg": "#e8e8e8"}
+        "panel": "#1e1e1e", "fg": "#f2f2f2", "muted": "#d0d0d0", "tile": "#3a3a3a", "tile_fg": "#e8e8e8",
+        "stripe": "#3a3f48"}
 #: Couleurs en cours, remplies par :meth:`App._apply_theme`.
 COLORS = dict(LIGHT)
 #: Points ajoutés à toutes les polices (réglage « Grands caractères »), fixé par :meth:`App._apply_theme`.
@@ -530,6 +533,10 @@ class App(tk.Tk):
         self.title(f"BookTek {__version__}")
         self.geometry("1100x700")
         self.minsize(820, 520)
+        try:  # icône de toutes les fenêtres ; embarquée dans l'exe par tools/release.py (--add-data)
+            self.iconbitmap(default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico"))
+        except tk.TclError:
+            pass  # fichier absent : icône Tk par défaut
         self.lib = Library(db_path)
         self.db_path = db_path
         self.q = queue.Queue()
@@ -565,10 +572,18 @@ class App(tk.Tk):
         for key, label in (("dark", "Thème sombre"), ("large", "Grands caractères")):
             var = tk.BooleanVar(self, value=bool(self.settings.get(key)))
             m.add_checkbutton(label=label, variable=var, command=lambda k=key, v=var: self.set_setting(k, v.get()))
+        m.add_separator()
+        side = tk.StringVar(self, value=self.settings.get("detail", "bottom"))
+        for val, label in (("bottom", "Fiche du livre en bas"), ("right", "Fiche du livre à droite")):
+            m.add_radiobutton(label=label, value=val, variable=side, command=lambda: self.set_setting("detail", side.get()))
         menubar.add_cascade(label="Affichage", menu=m)
         m = tk.Menu(menubar, tearoff=False)
         m.add_command(label="Rechercher une mise à jour", command=self.check_updates_manual)
         m.add_command(label="À propos de BookTek", command=self.about)
+        sources = tk.Menu(m, tearoff=False)
+        for name, url in lookup.SOURCES:
+            sources.add_command(label=f"{name} : {url}", command=lambda u=url: webbrowser.open(u))
+        m.add_cascade(label="Sources des données (API utilisées)", menu=sources)
         menubar.add_cascade(label="Aide", menu=m)
         self.config(menu=menubar)
 
@@ -627,12 +642,13 @@ class App(tk.Tk):
         for val, txt in (("grid", "Miniatures"), ("list", "Liste")):
             ttk.Radiobutton(bar, text=txt, value=val, variable=self.view, command=self.show_view).pack(side="right", padx=4)
         ttk.Label(bar, text="Affichage :").pack(side="right")
-        # Liste (ou miniatures) en haut, fiche du livre sélectionné en bas ; la séparation se déplace à la souris.
-        paned = ttk.PanedWindow(lib, orient="vertical")
+        # Liste (ou miniatures), puis fiche du livre sélectionné en bas ou à droite ; la séparation se déplace à la souris.
+        self.detail_right = self.settings.get("detail") == "right"  # menu Affichage
+        paned = ttk.PanedWindow(lib, orient="horizontal" if self.detail_right else "vertical")
         paned.pack(fill="both", expand=True)
         self.view_box = ttk.Frame(paned)
-        self.detail = ttk.Frame(paned, height=280, padding=(4, 10, 4, 0))
-        self.detail.pack_propagate(False)  # hauteur fixée par la séparation, pas par le contenu
+        self.detail = ttk.Frame(paned, width=460, height=280, padding=(12, 0, 0, 0) if self.detail_right else (4, 10, 4, 0))
+        self.detail.pack_propagate(False)  # taille fixée par la séparation, pas par le contenu
         self._detail_w = 0
         self.detail.bind("<Configure>", lambda e: e.width != self._detail_w and self.show_detail())
         paned.add(self.view_box, weight=3)
@@ -768,6 +784,7 @@ class App(tk.Tk):
             tree.heading(key, text=label, command=lambda k=key: self._sort(
                 tree, k, tree._sort_state == (k, False)))
             tree.column(key, width=width, minwidth=width, anchor="w")  # minwidth : défilement horizontal plutôt que colonnes écrasées
+        tree.tag_configure("odd", background=COLORS["stripe"])  # une ligne sur deux en relief, voir _stripe
         sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=sb.set, xscrollcommand=hsb.set)
@@ -791,10 +808,20 @@ class App(tk.Tk):
             tree.heading(key, text=label + ((" ▼" if desc else " ▲") if key == col else ""))
         if hasattr(tree, "_on_sort"):
             tree._on_sort(col, desc)
+        App._stripe(tree)
 
     def _resort(self, tree):
+        """Réapplique le tri mémorisé (après un rafraîchissement) et l'alternance des lignes."""
         if tree._sort_state:
             self._sort(tree, *tree._sort_state)
+        self._stripe(tree)
+
+    @staticmethod
+    def _stripe(tree):
+        """Colore une ligne sur deux (tag ``odd``) dans l'ordre affiché, en gardant les autres tags (``late``)."""
+        for idx, i in enumerate(tree.get_children("")):
+            tags = [t for t in tree.item(i, "tags") if t != "odd"]
+            tree.item(i, tags=tags + ["odd"] * (idx % 2))
 
     # ---- utilitaires ----------------------------------------------------
     def set_status(self, msg, kind="info"):
@@ -899,8 +926,11 @@ class App(tk.Tk):
                       foreground=COLORS["muted"], font=ui_font(11)).pack(anchor="w")
             return
         loan = self.lib.active_loan(book["id"])
-        left = ttk.Frame(self.detail)
-        left.pack(side="left", fill="y")
+        left = ttk.Frame(self.detail)  # jaquette : à gauche du texte, ou au-dessus quand la fiche est à droite
+        if self.detail_right:
+            left.pack(side="top", anchor="w", pady=(0, 8))
+        else:
+            left.pack(side="left", fill="y")
         text = ttk.Frame(self.detail)
         text.pack(side="left", fill="both", expand=True)
         bar = ttk.Frame(text)
@@ -910,7 +940,8 @@ class App(tk.Tk):
         ttk.Button(bar, text="Modifier…", command=lambda: self.run_action(book, loan, "edit")).pack(side="left", padx=6)
         ttk.Button(bar, text="Supprimer", command=self.delete_selected).pack(side="left")
         self.detail_photo = book_details(text, book, loan, self.cover_path(book["id"]),
-                                         max(300, self._detail_w - 200), None, cover_parent=left)
+                                         max(200, self._detail_w - (40 if self.detail_right else 200)), None,
+                                         cover_parent=left)
 
     def sort_books(self, event=None):
         """Applique « Trier par » / « Décroissant » (les deux vues suivent l'ordre du tableau)."""

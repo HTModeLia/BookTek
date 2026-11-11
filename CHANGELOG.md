@@ -2,6 +2,15 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.7.0] - 2026-11-11
+
+### Ajouts
+- **Fiches plus complètes à l'ajout d'un livre** : les trois catalogues (BnF, Google Books, Open Library) sont interrogés en même temps et leurs informations sont combinées. Le résumé retenu est le plus complet, et une couverture est cherchée dans chaque catalogue tour à tour. Les résumés de Google Books, souvent absents jusqu'ici, sont maintenant récupérés.
+- **Nouvelle icône** : un livre ouvert sur fond bleu, traversé par le trait rouge du lecteur de code-barres, sur l'exe, la barre des tâches et toutes les fenêtres.
+- **Fiche du livre à droite ou en bas**, au choix dans le menu *Affichage*.
+- **Une ligne sur deux colorée** dans les tableaux, pour mieux suivre une ligne.
+- **Aide > Sources des données (API utilisées)** : la liste des services interrogés, avec leurs adresses (un clic ouvre la page).
+
 ## [1.6.0] - 2026-11-10
 
 ### Ajouts
