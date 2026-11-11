@@ -226,3 +226,7 @@ __marimo__/
 booktek/_key.py
 livres*.csv
 Book Collector/
+
+# Données créées en lançant depuis les sources (jaquettes, réglages d affichage)
+covers/
+settings.json
