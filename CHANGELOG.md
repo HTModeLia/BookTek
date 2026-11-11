@@ -2,6 +2,11 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.11.0] - 2026-11-11
+
+### Modifications
+- **Choisir une jaquette** : la fenêtre rappelle le livre concerné (titre - auteur), et les boutons **−** et **+** agrandissent les jaquettes pour mieux les comparer. Quand elles sont grandes, la liste défile.
+
 ## [1.10.0] - 2026-11-11
 
 ### Ajouts

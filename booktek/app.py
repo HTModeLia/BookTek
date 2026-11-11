@@ -314,7 +314,8 @@ class BookForm(Dialog):
         if not images:
             messagebox.showinfo("Jaquette", "Aucune jaquette trouvée en ligne pour ce livre.", parent=self)
             return
-        img = images[0] if len(images) == 1 else CoverPicker(self, images).show()
+        book = " - ".join(filter(None, (self.vars["title"].get().strip(), self.vars["authors"].get().strip())))
+        img = images[0] if len(images) == 1 else CoverPicker(self, images, book).show()
         if img and self._preview(img):
             self.cover_src = img
 
@@ -349,29 +350,70 @@ def open_image(src):
 class CoverPicker(Dialog):
     """Choix d'une jaquette parmi celles trouvées en ligne : un clic sur une image la choisit.
 
+    ``book`` (« titre - auteur ») rappelle le livre concerné. Les boutons
+    **−** et **+** changent la taille des images (:attr:`ZOOMS`).
     ``result`` contient les octets de l'image choisie.
     """
-    COLS = 4
+    #: Tailles proposées : (largeur, hauteur maximales, nombre de colonnes).
+    ZOOMS = ((140, 210, 4), (220, 330, 3), (320, 480, 2))
 
-    def __init__(self, master, images):
+    def __init__(self, master, images, book=""):
         super().__init__(master, "Choisir une jaquette")
+        if book:
+            ttk.Label(self.body, text=book, font=ui_font(13, "bold")).pack(anchor="w")
         ttk.Label(self.body, text=f"{len(images)} jaquettes trouvées : cliquez sur celle de votre édition.",
-                  font=ui_font(11)).grid(row=0, column=0, columnspan=self.COLS, sticky="w", pady=(0, 10))
-        self.photos = []  # références à garder, sinon Tk efface les images
-        for n, data in enumerate(images):
+                  font=ui_font(11)).pack(anchor="w", pady=(0, 10))
+        self.images, self.zoom = [], 0
+        for data in images:
             try:
-                img = open_image(data)
-                size = f"{img.width} × {img.height}"
-                img.thumbnail((140, 210))
-                photo = ImageTk.PhotoImage(img)
+                self.images.append((data, open_image(data)))
             except Exception:
-                continue  # image illisible : ignorée
+                pass  # image illisible : ignorée
+        bar = ttk.Frame(self.body)
+        bar.pack(side="bottom", fill="x", pady=(10, 0))  # avant les images : reste visible quand elles sont grandes
+        # Images dans un canevas qui défile : en grand, elles dépasseraient de l'écran.
+        self.canvas = tk.Canvas(self.body, highlightthickness=0, bg=COLORS["panel"])
+        sb = ttk.Scrollbar(self.body, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.grid_box = ttk.Frame(self.canvas)
+        self.canvas.create_window(0, 0, window=self.grid_box, anchor="nw")
+        self.bind("<MouseWheel>", lambda e: (self.canvas.yview_scroll(-e.delta // 120, "units"), "break")[1])
+        ttk.Label(bar, text="Taille des images :").pack(side="left")
+        self.smaller = ttk.Button(bar, text="−", width=3, command=lambda: self._render(-1))
+        self.smaller.pack(side="left", padx=(6, 2))
+        self.bigger = ttk.Button(bar, text="+", width=3, command=lambda: self._render(1))
+        self.bigger.pack(side="left")
+        ttk.Button(bar, text="Annuler", command=self.destroy).pack(side="right")
+        self._render(0)
+
+    def _render(self, step):
+        """Redessine les jaquettes à la taille ``zoom + step``."""
+        self.zoom = max(0, min(len(self.ZOOMS) - 1, self.zoom + step))
+        w, h, cols = self.ZOOMS[self.zoom]
+        self.smaller.state(["disabled" if self.zoom == 0 else "!disabled"])
+        self.bigger.state(["disabled" if self.zoom == len(self.ZOOMS) - 1 else "!disabled"])
+        for child in self.grid_box.winfo_children():
+            child.destroy()
+        self.photos = []  # références à garder, sinon Tk efface les images
+        for n, (data, img) in enumerate(self.images):
+            thumb = img.copy()
+            thumb.thumbnail((w, h))
+            photo = ImageTk.PhotoImage(thumb)
             self.photos.append(photo)
-            b = ttk.Button(self.body, image=photo, text=size, compound="top",
-                           command=lambda d=data: self.choose(d))
-            b.grid(row=1 + n // self.COLS, column=n % self.COLS, padx=4, pady=4, sticky="n")
-        ttk.Button(self.body, text="Annuler", command=self.destroy).grid(
-            row=2 + len(images) // self.COLS, column=self.COLS - 1, sticky="e", pady=(10, 0))
+            ttk.Button(self.grid_box, image=photo, text=f"{img.width} × {img.height}", compound="top",
+                       command=lambda d=data: self.choose(d)).grid(row=n // cols, column=n % cols, padx=4, pady=4,
+                                                                    sticky="n")
+        self.grid_box.update_idletasks()
+        bw, bh = self.grid_box.winfo_reqwidth(), self.grid_box.winfo_reqheight()
+        self.canvas.configure(width=bw, height=min(bh, self.winfo_screenheight() - 260), scrollregion=(0, 0, bw, bh))
+        self.canvas.yview_moveto(0)
+        if self.winfo_ismapped():  # agrandie : on la remonte et on la décale pour qu'elle reste dans l'écran
+            self.update_idletasks()
+            x = min(self.winfo_x(), self.winfo_screenwidth() - self.winfo_width() - 10)
+            y = min(self.winfo_y(), self.winfo_screenheight() - self.winfo_height() - 60)
+            self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     def choose(self, data):
         self.result = data
@@ -1378,7 +1420,7 @@ class App(tk.Tk):
         if not images:
             self.set_status(f"Aucune jaquette trouvée en ligne pour « {book['title']} ».", "warn")
             return
-        img = CoverPicker(self, images).show()
+        img = CoverPicker(self, images, " - ".join(filter(None, (book["title"], book["authors"])))).show()
         if img:
             self.change_cover(book, img)
             self.refresh()
