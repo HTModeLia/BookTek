@@ -1,0 +1,59 @@
+{
+  "name": "ma-bibliotheque",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gestionnaire local de bibliothèque personnelle",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "desktop:build": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5",
+    "wait-on": "^8.0.1"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
+  "build": {
+    "appId": "fr.bibliotheque.personnelle",
+    "productName": "Ma Bibliothèque",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "allowScripts": {
+    "electron@45.3.1": true,
+    "esbuild@0.25.12": true
+  }
+}

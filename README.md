@@ -1,39 +1,68 @@
-# BookTek
+# BookTek — version 1.0.0
 
-Gestion de bibliothèque personnelle sous Windows, pilotée par la lecture d'ISBN : on scanne le code-barres d'un livre pour l'enregistrer, le prêter ou noter son retour.
+Application locale de gestion d'une bibliothèque personnelle, construite avec React, TypeScript, Dexie/IndexedDB et Electron.
 
-- **Scan d'ISBN** avec une douchette code-barres ou au clavier.
-- **Fiches remplies automatiquement** grâce aux catalogues en ligne (BnF, Google Books, Open Library).
-- **Prêts** : emprunteur, date de retour prévue, retards signalés, historique.
-- **Couvertures**, résumés et fiche détaillée sous la liste ; affichage en liste ou en miniatures.
-- **Confort de lecture** : thème sombre à fort contraste et grands caractères.
-- **Import** d'une collection *Book Collector* (`.bkc`), **export** CSV pour Excel.
-- **Mise à jour automatique** depuis ce dépôt.
+## Fonctionnalités
 
-## Installation
+- Collection de livres avec jaquette, auteur, ISBN, pages, résumé, genre, année et emplacement.
+- Recherche ISBN multi-sources via Google Books et Open Library.
+- Validation des ISBN-10 et ISBN-13 et détection des doublons.
+- Recherche textuelle, filtres par genre et emplacement, affichage en grille ou en liste.
+- Fiches emprunteurs : nom, e-mail, téléphone et notes.
+- Prêts avec emprunteur, date de prêt, date de retour prévue et note facultative.
+- Détection automatique des retards selon la date du jour.
+- Historique filtrable : tous les prêts, en cours, en retard et rendus.
+- Enregistrement du retour et conservation de l'historique.
+- Statistiques de collection, prêts, retards, retours et emprunteurs.
+- Export et import JSON incluant livres, prêts et fiches emprunteurs.
 
-1. Télécharger `BookTek.exe` depuis la [dernière release](https://github.com/HTModeLia/BookTek/releases/latest).
-2. Le placer dans un dossier personnel (par exemple `Documents\BookTek`), puis le lancer.
+## Mise à niveau depuis la version 0.2
 
-Aucune installation n'est nécessaire. La base de données `booktek.db` est créée à côté de l'exécutable.
+La base de données passe automatiquement de la version 1 à la version 2 via Dexie.
+Les livres et prêts existants sont conservés. Les noms des emprunteurs présents dans les anciens prêts sont transformés en fiches emprunteurs, et les titres des livres sont copiés dans les enregistrements de prêt pour préserver l'historique même si un livre est supprimé plus tard.
 
-## Documentation
+Il est recommandé d'exporter une sauvegarde JSON avant toute mise à niveau importante.
 
-| Document | Pour qui | Contenu |
-|---|---|---|
-| [Guide d'utilisation](docs/guide-utilisateur.md) | Utilisateurs | Scanner, prêter, importer, sauvegarder, dépannage |
-| [Mises à jour](docs/mises-a-jour.md) | Utilisateurs et développeurs | Fonctionnement de la mise à jour automatique |
-| [Architecture](docs/architecture.md) | Développeurs | Modules, base de données, threads, sources en ligne, format `.bkc` |
-| [Publier une version](docs/publier-une-version.md) | Mainteneurs | Procédure de release |
-| [Historique des versions](CHANGELOG.md) | Tous | Nouveautés de chaque version |
-| [CLAUDE.md](CLAUDE.md) | Développeurs et IA | Reprendre le projet : conventions, état, pièges, idées en attente |
+## Prérequis
 
-## Développement
+- Node.js 20 ou plus récent
+- Windows 10/11 pour la version Electron
+- VS Code (facultatif)
 
-Python 3.10 ou plus récent. Bibliothèque standard (Tkinter, SQLite, urllib), plus Pillow pour afficher les couvertures (`pip install pillow`) et PyInstaller pour construire l'exe.
+## Installation et lancement web
 
+```powershell
+npm install
+npm run dev
 ```
-python main.py                              # lancer depuis les sources
-python -m unittest discover -s tests        # tests
-python tools/release.py --dry-run           # construire l'exe sans publier
+
+## Lancement Windows en développement
+
+```powershell
+npm run electron:dev
 ```
+
+## Génération de l'installateur Windows
+
+```powershell
+npm run desktop:build
+```
+
+L'installateur est généré dans `release/`.
+
+## Données et sauvegardes
+
+Les données restent locales dans IndexedDB. La version navigateur et la version Windows utilisent des stockages distincts : utiliser l'export/import JSON pour transférer une bibliothèque entre les deux.
+La recherche ISBN et le téléchargement des couvertures nécessitent une connexion Internet.
+
+## Version 1.0.0 — première version stable
+
+- Gestion de la collection : fiches livres, recherche ISBN, filtres et statistiques.
+- Gestion des emprunteurs, prêts, retours et historique.
+- Sauvegardes automatiques et manuelles dans l’application Windows.
+- Une sauvegarde automatique par jour ; une sauvegarde manuelle du jour ne bloque pas l’automatique.
+- Conservation des 10 dernières sauvegardes locales.
+- Restauration avec création préalable d’une sauvegarde de sécurité.
+- Import/export JSON conservé pour les transferts entre appareils.
+
+Les sauvegardes automatiques sont disponibles dans l’application Windows Electron. Le mode navigateur conserve l’import/export JSON.
