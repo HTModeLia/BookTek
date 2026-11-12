@@ -12,7 +12,7 @@ Usage (depuis la racine du dépôt) ::
 2. vérifie que la copie de travail est propre, que la branche est ``main``,
    synchronisée avec ``origin``, et que le tag ``vx.y.z`` n'existe pas ;
 3. lance les tests unitaires ;
-4. construit ``dist/BookTek.exe`` avec PyInstaller ;
+4. construit l'interface (``npm run build`` dans ``web/``) puis ``dist/BookTek.exe`` avec PyInstaller ;
 5. crée et pousse le tag, crée la release GitHub et y joint l'exe.
 
 Une fois la release publiée, les installations existantes la détectent et
@@ -100,9 +100,12 @@ def main():
         sys.exit("Clé Google Books manquante : créez booktek/_key.py (voir docs/publier-une-version.md).")
     print("Tests…")
     run(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q")
+    print("Construction de l'interface (npm)…")
+    run("npm.cmd" if os.name == "nt" else "npm", "--prefix", "web", "run", "build", capture=True)
     print("Construction de l'exécutable…")
     run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
         "--icon", os.path.join("booktek", "icon.ico"), "--add-data", f"{os.path.join('booktek', 'icon.ico')}{os.pathsep}booktek",
+        "--add-data", f"{os.path.join('web', 'dist')}{os.pathsep}{os.path.join('web', 'dist')}",
         "--name", "BookTek", "--distpath", "dist", "--workpath", "build", "main.py", capture=True)
     size = os.path.getsize(EXE)
     print(f"{EXE} ({size / 1e6:.1f} Mo)")

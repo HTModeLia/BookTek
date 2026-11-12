@@ -96,7 +96,8 @@ class Library:
 
     def __init__(self, path):
         """Ouvre (ou crée) la base ``path`` ; ``":memory:"`` pour une base temporaire."""
-        self.con = sqlite3.connect(path)
+        # check_same_thread=False : l'interface web appelle depuis plusieurs threads, protégés par un verrou (web.Api)
+        self.con = sqlite3.connect(path, check_same_thread=False)
         self.con.row_factory = sqlite3.Row
         self.con.execute("PRAGMA foreign_keys = ON")  # active ON DELETE CASCADE
         self.con.executescript(SCHEMA)

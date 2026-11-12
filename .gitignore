@@ -230,3 +230,5 @@ Book Collector/
 # Données créées en lançant depuis les sources (jaquettes, réglages d affichage)
 covers/
 settings.json
+node_modules/
+tsconfig.tsbuildinfo
