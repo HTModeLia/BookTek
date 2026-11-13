@@ -217,8 +217,10 @@ Vos livres et vos prêts ne sont pas touchés par une mise à jour. Pour plus de
 
 Toutes les données sont dans un seul fichier, `booktek.db`. Son emplacement est indiqué dans **Aide > À propos** : en général le dossier de `BookTek.exe`.
 
-- **Sauvegarder** : fermez BookTek, puis copiez `booktek.db` (clé USB, cloud…).
-- **Restaurer** : fermez BookTek, puis remplacez `booktek.db` par la copie.
+- **Sauvegardes automatiques** : au lancement de BookTek, une sauvegarde est créée si la précédente date de plus d'un jour. Les 10 dernières sont gardées dans le dossier `backups` (indiqué dans l'écran **Sauvegardes**).
+- **Sauvegarder maintenant** : menu **Sauvegardes**, bouton **Créer une sauvegarde**. Chaque sauvegarde contient la base et les jaquettes.
+- **Restaurer** : menu **Sauvegardes**, bouton **Restaurer** à côté de la sauvegarde voulue. Vos données actuelles sont remplacées, mais une copie de sécurité est créée avant.
+- **Copie manuelle** (clé USB, cloud…) : fermez BookTek, puis copiez `booktek.db` et le dossier `covers`.
 - **Changer d'ordinateur** : copiez `BookTek.exe` et `booktek.db` dans le même dossier sur le nouvel ordinateur.
 
 ## Dépannage

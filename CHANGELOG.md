@@ -2,6 +2,15 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.12.0] - 2026-11-13
+
+### Ajouts
+- **Sauvegardes** : nouvel écran (menu **Sauvegardes**) qui garde des copies de votre bibliothèque, livres, prêts, emprunteurs et jaquettes. Une sauvegarde est créée automatiquement au lancement, au maximum une fois par jour. Vous pouvez aussi en créer une à tout moment avec **Créer une sauvegarde**.
+- **Restaurer** une sauvegarde depuis la liste. BookTek fait d'abord une copie de sécurité de vos données actuelles, au cas où.
+
+### Modifications
+- Les 10 dernières sauvegardes sont conservées ; les plus anciennes sont supprimées automatiquement.
+
 ## [1.11.0] - 2026-11-11
 
 ### Modifications

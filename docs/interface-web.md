@@ -35,4 +35,4 @@ python main.py
 - Fiche du livre toujours à droite (disposition de la maquette) ; regroupement par auteur, année ou genre dans une liste déroulante au lieu d'un panneau.
 - Thème sombre obtenu par inversion des couleurs (raccourci, voir `style.css`).
 - Les polices DM Sans et Manrope viennent de Google Fonts : hors ligne, police système.
-- Sauvegardes JSON de la maquette Electron non reprises (la sauvegarde reste la copie de `booktek.db`).
+- Sauvegardes reprises de la maquette Electron, mais sous forme d'archive ZIP (`booktek/backup.py`) : base + jaquettes, une par jour au lancement, 10 conservées, restauration avec copie de sécurité. Les sauvegardes JSON de la maquette ne sont pas reprises.
