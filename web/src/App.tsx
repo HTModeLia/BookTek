@@ -269,7 +269,8 @@ export default function App() {
   /** Ouvre le menu Outils à droite du bouton, au-dessus de celui-ci (il est en bas de la barre latérale). */
   function openTools() {
     const r = toolsRef.current!.getBoundingClientRect()
-    setTools(tools ? null : { x: r.right + 8, bottom: window.innerHeight - r.bottom })
+    // au-dessus du bouton ; en étroit, collé au bord droit pour ne pas sortir de la fenêtre
+    setTools(tools ? null : { x: Math.min(r.right + 8, window.innerWidth - 240), bottom: window.innerHeight - r.top + 8 })
   }
   /** Exécute une action du menu Outils, puis referme le menu. */
   const run = (fn: () => void) => () => { setTools(null); fn() }

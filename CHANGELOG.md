@@ -2,6 +2,15 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.14.0] - 2026-11-13
+
+### Modifications
+- Le menu **Outils** reste en bas de la fenêtre.
+- Fenêtre redimensionnable : la liste des livres et la fiche défilent chacune de leur côté. En fenêtre étroite, la barre du bas (rubriques et Outils) reste visible.
+
+### Corrections
+- En grands caractères, la fenêtre ne déborde plus à droite.
+
 ## [1.13.0] - 2026-11-13
 
 ### Modifications
