@@ -144,8 +144,15 @@ const KEY = 'booktek-tri';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cover = i => i ? `https://books.google.com/books/content?vid=ISBN${i}&printsec=frontcover&img=1&zoom=1` : '';
 // Site d'où vient l'ISBN : [libellé, adresse]. Une fiche Book Collector n'a pas de site : on vérifie à la BnF.
-const BNF = i => 'https://catalogue.bnf.fr/rechercher.do?motRecherche=' + i;
-const site = r => /Google/.test(r.source) ? ['voir sur Google Books', i => 'https://books.google.fr/books?vid=ISBN' + i]
+// « #:~:text= » (fragment de texte) fait surligner l'ISBN par le navigateur à l'ouverture.
+const to10 = i => {  // la BnF indexe les livres anciens en ISBN-10 : la recherche en ISBN-13 ne les trouve pas
+  if (!/^978\d{10}$/.test(i)) return '';
+  const b = i.slice(3, 12), k = (11 - [...b].reduce((s, c, n) => s + (10 - n) * c, 0) % 11) % 11;
+  return b + (k == 10 ? 'X' : k);
+};
+// BnF affiche « ISBN 2-7441-7201-4 » : on surligne de « ISBN » jusqu'au chiffre de contrôle
+const BNF = i => { const q = to10(i) || i; return `https://catalogue.bnf.fr/rechercher.do?motRecherche=${q}#:~:text=ISBN,${q.slice(-1)}`; };
+const site = r => /Google/.test(r.source) ? ['voir sur Google Books', i => `https://books.google.fr/books?vid=ISBN${i}#:~:text=${i}`]
                 : /BnF/.test(r.source) ? ['voir à la BnF', BNF] : ['vérifier à la BnF', BNF];
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
