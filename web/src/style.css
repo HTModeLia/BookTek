@@ -36,5 +36,11 @@ html.dark{filter:invert(1) hue-rotate(180deg);background:#fff}html.dark img{filt
 .modal.bookform .formgrid{gap:9px 13px}
 html.dark .sidebar{filter:invert(1) hue-rotate(180deg)}html.dark .sidebar img{filter:none}
 
-/* Fond transparent derrière le menu Outils : un clic ailleurs le referme */
-.menuback{position:fixed;inset:0;z-index:19}
+/* Page Outils : boutons d'action et interrupteurs (thème sombre, grands caractères) */
+.toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:12px 0 4px}
+.toolgrid button{border:1px solid #d9e1ed;background:#fff;border-radius:10px;padding:13px 14px;display:flex;align-items:center;gap:10px;font:600 14px 'DM Sans';color:#35445c;cursor:pointer;text-align:left}
+.toolgrid button:hover{border-color:#2478e8}
+.toolgrid svg{width:18px;height:18px;flex-shrink:0}
+.toolgrid .track{width:44px;height:24px;border-radius:12px;background:#c4cedc;position:relative;flex-shrink:0;margin-left:auto}
+.toolgrid .track::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
+.toolgrid .track.on{background:#2175e8}.toolgrid .track.on::after{left:23px}

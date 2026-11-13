@@ -49,11 +49,9 @@ const readImage = (file: File) => new Promise<string>((ok, ko) => { const r = ne
 export default function App() {
   const [data, setData] = useState<Data | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
-  const [section, setSection] = useState<'library' | 'loans' | 'borrowers' | 'stats' | 'backups' | 'about'>('library')
+  const [section, setSection] = useState<'library' | 'loans' | 'borrowers' | 'stats' | 'tools' | 'backups' | 'about'>('library')
   const [backups, setBackups] = useState<{ name: string; date: string; size: number }[]>([])
   const [backupBusy, setBackupBusy] = useState(false)
-  const [tools, setTools] = useState<{ x: number; bottom: number } | null>(null)
-  const toolsRef = useRef<HTMLButtonElement>(null)
   const [query, setQuery] = useState('')
   const [searchIn, setSearchIn] = useState('all')
   const [sortBy, setSortBy] = useState('authors')
@@ -266,14 +264,6 @@ export default function App() {
     if (res.added && confirm(`${msg}\n\n${note}\nCompléter maintenant les fiches (titre, auteur, éditeur, couverture…) via Internet ?`)) enrich()
   }
   async function exportCsv() { const path = await call(() => api().export_csv()); if (path) setStatus(`Exporté : ${path}`, 'ok') }
-  /** Ouvre le menu Outils à droite du bouton, au-dessus de celui-ci (il est en bas de la barre latérale). */
-  function openTools() {
-    const r = toolsRef.current!.getBoundingClientRect()
-    // au-dessus du bouton ; en étroit, collé au bord droit pour ne pas sortir de la fenêtre
-    setTools(tools ? null : { x: Math.min(r.right + 8, window.innerWidth - 240), bottom: window.innerHeight - r.top + 8 })
-  }
-  /** Exécute une action du menu Outils, puis referme le menu. */
-  const run = (fn: () => void) => () => { setTools(null); fn() }
   async function loadBackups() { setBackups(await call(() => api().backups()) ?? []) }
   async function createBackup() {
     setBackupBusy(true); const name = await call(() => api().create_backup()); setBackupBusy(false)
@@ -306,21 +296,9 @@ export default function App() {
         {nav('about', <Info />, 'À propos')}
       </nav>
       <div className="sidebottom">
-        <button ref={toolsRef} className={tools ? 'on' : ''} onClick={openTools}><Wrench />Outils</button>
+        <button className={section === 'tools' ? 'on' : ''} onClick={() => setSection('tools')}><Wrench />Outils</button>
         <small>Vos données restent sur cet ordinateur.</small>
       </div>
-      {tools && <>
-        <div className="menuback" onClick={() => setTools(null)} />
-        <div className="contextmenu" style={{ left: tools.x, bottom: tools.bottom }}>
-          <button onClick={run(() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.'))}><Upload size={15} />Importer Book Collector</button>
-          <button onClick={run(() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.'))}><FileText size={15} />Importer une liste d’ISBN</button>
-          <button onClick={run(enrich)}><Globe size={15} />Compléter via Internet</button>
-          <button onClick={run(exportCsv)}><Download size={15} />Exporter en CSV</button>
-          <button onClick={run(() => setSection('backups'))}><ShieldCheck size={15} />Sauvegardes…</button>
-          <button onClick={run(() => setting('dark', !data?.settings.dark))}><Moon size={15} />Thème sombre{data?.settings.dark ? ' : activé' : ''}</button>
-          <button onClick={run(() => setting('large', !data?.settings.large))}><Type size={15} />Grands caractères{data?.settings.large ? ' : activés' : ''}</button>
-        </div>
-      </>}
     </aside>
     <main className="main">
       <header className="topbar">
@@ -458,6 +436,23 @@ export default function App() {
         <div><small>Livres lus</small><strong>{books.filter(b => b.read_date).length}</strong></div>
         <div><small>Genres représentés</small><strong>{genres.size}</strong></div>
       </div></section>}
+
+      {section === 'tools' && <section className="fullpanel">
+        <div className="pagehead"><div><h1>Outils</h1><p className="muted">Importer, exporter, sauvegarder et régler l’affichage.</p></div></div>
+        <h2>Données</h2>
+        <div className="toolgrid">
+          <button onClick={() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.')}><Upload />Importer Book Collector</button>
+          <button onClick={() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.')}><FileText />Importer une liste d’ISBN</button>
+          <button onClick={enrich}><Globe />Compléter via Internet</button>
+          <button onClick={exportCsv}><Download />Exporter en CSV</button>
+          <button onClick={() => setSection('backups')}><ShieldCheck />Sauvegardes…</button>
+        </div>
+        <h2>Affichage</h2>
+        <div className="toolgrid">
+          <button className="toggle" role="switch" aria-checked={!!data?.settings.dark} onClick={() => setting('dark', !data?.settings.dark)}><Moon />Thème sombre<i className={`track${data?.settings.dark ? ' on' : ''}`} /></button>
+          <button className="toggle" role="switch" aria-checked={!!data?.settings.large} onClick={() => setting('large', !data?.settings.large)}><Type />Grands caractères<i className={`track${data?.settings.large ? ' on' : ''}`} /></button>
+        </div>
+      </section>}
 
       {section === 'backups' && <section className="fullpanel backup-panel">
         <div className="pagehead"><div><h1>Sauvegardes</h1><p className="muted">Copies de la base de données et des jaquettes.</p></div>

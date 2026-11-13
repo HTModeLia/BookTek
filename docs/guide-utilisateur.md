@@ -152,7 +152,7 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
 - **Liste par auteur, année ou genre** : cochez-la dans le menu **Affichage** pour faire apparaître un panneau à gauche. Choisissez en haut du panneau **Auteur**, **Année** ou **Genre** : chaque auteur (classé par nom de famille), année ou genre s'affiche avec son nombre de livres. Cliquez sur une ligne pour ne voir que ses livres, en Liste comme en Miniatures ; **(Tous les livres)** les réaffiche tous. Un livre écrit à plusieurs apparaît sous chacun de ses auteurs. La recherche s'applique aussi au panneau. Si vous scannez un livre qui n'est pas dans le groupe affiché, BookTek revient à tous les livres pour le montrer.
 - **Lignes alternées** : dans les tableaux, une ligne sur deux est légèrement colorée pour suivre une ligne d'un bout à l'autre sans se tromper.
 - **Nombre de livres** : à côté du champ **Rechercher**, le nombre de livres affichés, recherche comprise.
-- **Thème sombre et grands caractères** : dans le menu **Affichage**, cochez **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
+- **Thème sombre et grands caractères** : dans la page **Outils**, activez l'interrupteur **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
 - **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. Avec **Chercher dans : Tout**, la recherche porte sur le titre, les auteurs, l'année, le genre, l'ISBN, le meuble et le nom de l'emprunteur. Choisissez **Titre**, **Auteur**, **Année** ou **Genre** pour ne chercher que dans ce champ, par exemple tous les livres du genre « Thriller ».
 - **Trier** : choisissez un critère dans **Trier par** (Titre, Auteur, Année, Genre) et cochez **Décroissant** pour inverser l'ordre ; cela vaut pour les deux affichages. En vue Liste, on peut aussi cliquer sur l'en-tête d'une colonne ; un second clic inverse l'ordre, et une flèche ▲ ▼ indique le tri en cours. Le tri est conservé après chaque scan ou modification. On peut trier par :
   - **Auteur** : par le nom de famille du premier auteur ;
@@ -218,8 +218,8 @@ Vos livres et vos prêts ne sont pas touchés par une mise à jour. Pour plus de
 Toutes les données sont dans un seul fichier, `booktek.db`. Son emplacement est indiqué dans **Aide > À propos** : en général le dossier de `BookTek.exe`.
 
 - **Sauvegardes automatiques** : au lancement de BookTek, une sauvegarde est créée si la précédente date de plus d'un jour. Les 10 dernières sont gardées dans le dossier `backups` (indiqué dans l'écran **Sauvegardes**).
-- **Sauvegarder maintenant** : menu **Outils > Sauvegardes…**, bouton **Créer une sauvegarde**. Chaque sauvegarde contient la base et les jaquettes.
-- **Restaurer** : menu **Outils > Sauvegardes…**, bouton **Restaurer** à côté de la sauvegarde voulue. Vos données actuelles sont remplacées, mais une copie de sécurité est créée avant.
+- **Sauvegarder maintenant** : page **Outils**, bouton **Sauvegardes…**, bouton **Créer une sauvegarde**. Chaque sauvegarde contient la base et les jaquettes.
+- **Restaurer** : page **Outils**, bouton **Sauvegardes…**, bouton **Restaurer** à côté de la sauvegarde voulue. Vos données actuelles sont remplacées, mais une copie de sécurité est créée avant.
 - **Copie manuelle** (clé USB, cloud…) : fermez BookTek, puis copiez `booktek.db` et le dossier `covers`.
 - **Changer d'ordinateur** : copiez `BookTek.exe` et `booktek.db` dans le même dossier sur le nouvel ordinateur.
 

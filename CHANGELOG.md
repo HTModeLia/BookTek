@@ -2,6 +2,12 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.15.0] - 2026-11-13
+
+### Modifications
+- **Outils** est une page, ouverte par le bouton en bas de la barre latérale. Elle regroupe des boutons pour importer, compléter via Internet, exporter en CSV et ouvrir les sauvegardes.
+- **Thème sombre** et **Grands caractères** sont des interrupteurs : un clic les active ou les désactive.
+
 ## [1.14.0] - 2026-11-13
 
 ### Modifications
