@@ -143,6 +143,10 @@ const SECTIONS = {1: "ISBN de la fiche Book Collector (sûr)", 2: "ISBN proposé
 const KEY = 'booktek-tri';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cover = i => i ? `https://books.google.com/books/content?vid=ISBN${i}&printsec=frontcover&img=1&zoom=1` : '';
+// Site d'où vient l'ISBN : [libellé, adresse]. Une fiche Book Collector n'a pas de site : on vérifie à la BnF.
+const BNF = i => 'https://catalogue.bnf.fr/rechercher.do?motRecherche=' + i;
+const site = r => /Google/.test(r.source) ? ['voir sur Google Books', i => 'https://books.google.fr/books?vid=ISBN' + i]
+                : /BnF/.test(r.source) ? ['voir à la BnF', BNF] : ['vérifier à la BnF', BNF];
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
 const st = r => state[r.id] || {d: '', isbn: r.isbn};
@@ -165,7 +169,7 @@ function render() {
           <div>${esc(r.found)}</div><div class="m">${esc(r.source)}</div></td>
       <td><input class="isbn" value="${esc(s.isbn)}" placeholder="à scanner">
           <div class="alts">${r.others.map(o => `<a href="#" data-i="${o}">${o}</a>`).join('')}</div>
-          <a class="m" href="#" data-check>voir sur Google</a></td>
+          <a class="m" href="#" data-check>${site(r)[0]}</a></td>
       <td><img class="cov" src="${cover(s.isbn)}" loading="lazy" alt="" onerror="this.style.visibility='hidden'"></td></tr>`;
   }
   document.getElementById('list').innerHTML = html + '</tbody></table>';
@@ -198,7 +202,9 @@ list.addEventListener('click', e => {
     e.preventDefault(); const old = input.value; input.value = e.target.dataset.i;
     e.target.dataset.i = e.target.textContent = old; input.dispatchEvent(new Event('change', {bubbles: true}));
   } else if (e.target.hasAttribute('data-check')) {
-    e.preventDefault(); window.open('https://www.google.com/search?tbm=bks&q=isbn:' + input.value.trim());
+    // ces sites refusent d'être affichés dans la page (X-Frame-Options) : fenêtre popup, réutilisée d'un clic à l'autre
+    e.preventDefault();
+    window.open(site(r)[1](input.value.replace(/[^0-9X]/gi, '')), 'booktek-source', 'popup,width=1000,height=800');
   }
 });
 list.addEventListener('change', e => {
