@@ -2,6 +2,48 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.16.0] - 2026-11-13
+
+### Modifications
+- Dans la fiche d'un livre (**Modifier…**), le **Titre** occupe toute la largeur du formulaire.
+- Le **Rangement** se saisit dans une seule case, au format `Salon › É2 › B3 › R2` (étage, box et rangée facultatifs).
+- La **Lu le** se choisit dans un calendrier.
+
+## [1.15.1] - 2026-11-13
+
+### Corrections
+- Les jaquettes de la liste et des miniatures gardent leur proportion quand la fenêtre change de taille.
+
+## [1.15.0] - 2026-11-13
+
+### Modifications
+- **Outils** est une page, ouverte par le bouton en bas de la barre latérale. Elle regroupe des boutons pour importer, compléter via Internet, exporter en CSV et ouvrir les sauvegardes.
+- **Thème sombre** et **Grands caractères** sont des interrupteurs : un clic les active ou les désactive.
+
+## [1.14.0] - 2026-11-13
+
+### Modifications
+- Le menu **Outils** reste en bas de la fenêtre.
+- Fenêtre redimensionnable : la liste des livres et la fiche défilent chacune de leur côté. En fenêtre étroite, la barre du bas (rubriques et Outils) reste visible.
+
+### Corrections
+- En grands caractères, la fenêtre ne déborde plus à droite.
+
+## [1.13.0] - 2026-11-13
+
+### Modifications
+- Les actions de la barre latérale (importer, compléter via Internet, exporter, thème sombre, grands caractères) sont regroupées dans un menu **Outils**.
+- L'écran **Sauvegardes** s'ouvre désormais depuis **Outils > Sauvegardes…**.
+
+## [1.12.0] - 2026-11-13
+
+### Ajouts
+- **Sauvegardes** : nouvel écran (menu **Sauvegardes**) qui garde des copies de votre bibliothèque, livres, prêts, emprunteurs et jaquettes. Une sauvegarde est créée automatiquement au lancement, au maximum une fois par jour. Vous pouvez aussi en créer une à tout moment avec **Créer une sauvegarde**.
+- **Restaurer** une sauvegarde depuis la liste. BookTek fait d'abord une copie de sécurité de vos données actuelles, au cas où.
+
+### Modifications
+- Les 10 dernières sauvegardes sont conservées ; les plus anciennes sont supprimées automatiquement.
+
 ## [1.11.0] - 2026-11-11
 
 ### Modifications

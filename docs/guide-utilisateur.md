@@ -152,16 +152,16 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
 - **Liste par auteur, année ou genre** : cochez-la dans le menu **Affichage** pour faire apparaître un panneau à gauche. Choisissez en haut du panneau **Auteur**, **Année** ou **Genre** : chaque auteur (classé par nom de famille), année ou genre s'affiche avec son nombre de livres. Cliquez sur une ligne pour ne voir que ses livres, en Liste comme en Miniatures ; **(Tous les livres)** les réaffiche tous. Un livre écrit à plusieurs apparaît sous chacun de ses auteurs. La recherche s'applique aussi au panneau. Si vous scannez un livre qui n'est pas dans le groupe affiché, BookTek revient à tous les livres pour le montrer.
 - **Lignes alternées** : dans les tableaux, une ligne sur deux est légèrement colorée pour suivre une ligne d'un bout à l'autre sans se tromper.
 - **Nombre de livres** : à côté du champ **Rechercher**, le nombre de livres affichés, recherche comprise.
-- **Thème sombre et grands caractères** : dans le menu **Affichage**, cochez **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
+- **Thème sombre et grands caractères** : dans la page **Outils**, activez l'interrupteur **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
 - **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. Avec **Chercher dans : Tout**, la recherche porte sur le titre, les auteurs, l'année, le genre, l'ISBN, le meuble et le nom de l'emprunteur. Choisissez **Titre**, **Auteur**, **Année** ou **Genre** pour ne chercher que dans ce champ, par exemple tous les livres du genre « Thriller ».
 - **Trier** : choisissez un critère dans **Trier par** (Titre, Auteur, Année, Genre) et cochez **Décroissant** pour inverser l'ordre ; cela vaut pour les deux affichages. En vue Liste, on peut aussi cliquer sur l'en-tête d'une colonne ; un second clic inverse l'ordre, et une flèche ▲ ▼ indique le tri en cours. Le tri est conservé après chaque scan ou modification. On peut trier par :
   - **Auteur** : par le nom de famille du premier auteur ;
   - **Titre** ;
   - **Année** de parution ;
   - **Genre** : à saisir dans la fiche du livre, ou récupéré en ligne par *Compléter les fiches via Internet* (Google Books ou Open Library, catégories souvent en anglais) ;
-  - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
+  - **Lu le** : date de lecture, à choisir dans la fiche du livre avec le calendrier ;
   - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
-- **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.
+- **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**. Dans la fiche, le **Rangement** tient en une seule case, au format `Meuble › É2 › B3 › R2` (étage, box et rangée facultatifs) ; la **Date de lecture** s'ouvre sur un calendrier.
 - **Actualiser les informations** : dans **Modifier…**, ce bouton (à droite, sous ceux de la jaquette) cherche en ligne, d'après l'ISBN, le titre, les auteurs, l'éditeur, l'année, le genre, le nombre de pages et le résumé, et remplace ceux du formulaire. L'emplacement, la date de lecture et les notes ne changent pas. Vérifiez puis cliquez sur **Enregistrer** ; **Annuler** garde la fiche telle qu'elle était.
 - **Clic droit sur un livre** (en Liste comme en Miniatures) : un menu propose **Actualiser la jaquette…**, **Actualiser les informations…** et **Modifier…**. Sans ouvrir la fiche : **Actualiser la jaquette…** cherche en ligne et affiche les jaquettes trouvées, celle sur laquelle vous cliquez est enregistrée ; **Actualiser les informations…** cherche en ligne et affiche ce qui va changer, enregistré seulement si vous répondez **Oui**.
 - **Jaquette** : dans **Modifier…**, la jaquette s'affiche à droite du formulaire.
@@ -217,8 +217,10 @@ Vos livres et vos prêts ne sont pas touchés par une mise à jour. Pour plus de
 
 Toutes les données sont dans un seul fichier, `booktek.db`. Son emplacement est indiqué dans **Aide > À propos** : en général le dossier de `BookTek.exe`.
 
-- **Sauvegarder** : fermez BookTek, puis copiez `booktek.db` (clé USB, cloud…).
-- **Restaurer** : fermez BookTek, puis remplacez `booktek.db` par la copie.
+- **Sauvegardes automatiques** : au lancement de BookTek, une sauvegarde est créée si la précédente date de plus d'un jour. Les 10 dernières sont gardées dans le dossier `backups` (indiqué dans l'écran **Sauvegardes**).
+- **Sauvegarder maintenant** : page **Outils**, bouton **Sauvegardes…**, bouton **Créer une sauvegarde**. Chaque sauvegarde contient la base et les jaquettes.
+- **Restaurer** : page **Outils**, bouton **Sauvegardes…**, bouton **Restaurer** à côté de la sauvegarde voulue. Vos données actuelles sont remplacées, mais une copie de sécurité est créée avant.
+- **Copie manuelle** (clé USB, cloud…) : fermez BookTek, puis copiez `booktek.db` et le dossier `covers`.
 - **Changer d'ordinateur** : copiez `BookTek.exe` et `booktek.db` dans le même dossier sur le nouvel ordinateur.
 
 ## Dépannage

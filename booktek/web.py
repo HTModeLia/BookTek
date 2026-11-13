@@ -22,15 +22,17 @@ import datetime as dt
 import io
 import json
 import os
+import sqlite3
 import sys
 import threading
 import time
 import webbrowser
+import zipfile
 
 import bottle
 import webview
 
-from . import __version__, bkc_import, lookup, updater
+from . import __version__, backup, bkc_import, lookup, updater
 # shortcut: helpers repris de l'interface Tkinter (importe tkinter dans l'exe), les déplacer si app.py disparaît
 from .app import LABELS, LOAN_DAYS, data_dir, fmt_date, place
 from .db import FIELDS, Library
@@ -131,6 +133,7 @@ class Api:
                 "today": dt.date.today().isoformat(),
                 "loanDays": LOAN_DAYS,
                 "dbPath": self._db_path,
+                "backupDir": backup.folder(self._db_path),
                 "sources": lookup.SOURCES,
                 "update": self._update_ready and self._update_ready.version,
             }
@@ -334,6 +337,30 @@ class Api:
         if url.startswith("https://"):
             webbrowser.open(url)
 
+    # ---- sauvegardes (voir booktek.backup) -----------------------------------
+    def backups(self):
+        return backup.list_backups(self._db_path)
+
+    def create_backup(self):
+        with self._lock:
+            return backup.create(self._db_path)
+
+    def restore_backup(self, name):
+        """Restaure une sauvegarde ; une copie de sécurité est faite avant. L'interface doit recharger ses données."""
+        with self._lock:
+            try:
+                backup.restore(self._db_path, name, self._lib.con.close)
+            finally:
+                self._lib = Library(self._db_path)  # rouvre la base, restaurée ou non
+
+    def _auto_backup(self):
+        """Sauvegarde automatique au lancement, dans un thread ; un échec ne bloque pas l'application."""
+        with self._lock:
+            try:
+                backup.auto(self._db_path)
+            except (OSError, sqlite3.Error, zipfile.BadZipFile):
+                pass
+
     # ---- mises à jour (même logique que booktek.app) -------------------------
     def check_update(self, manual=False):
         """Vérifie et télécharge une nouvelle version ; retourne un message (vérification manuelle)."""
@@ -393,4 +420,5 @@ def main():
                                         width=1280, height=800, min_size=(1050, 650), maximized=True,
                                         background_color="#f3f6fc")
     threading.Thread(target=api._auto_updates, daemon=True).start()
+    threading.Thread(target=api._auto_backup, daemon=True).start()
     webview.start()

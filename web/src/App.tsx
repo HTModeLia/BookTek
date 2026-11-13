@@ -1,17 +1,29 @@
 // Interface BookTek : visuel de la maquette Electron, données et logique en Python (booktek/web.py).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle } from 'lucide-react'
+import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench } from 'lucide-react'
 
 type Book = { id: number; isbn: string | null; title: string; authors: string; publisher: string; year: string; genre: string; pages: string; location: string; shelf: string; box: string; depth: string; read_date: string; summary: string; notes: string; borrower: string | null; due_date: string | null; place: string; cover: string }
 type Loan = { id: number; book_id: number; borrower: string; loan_date: string; due_date: string | null; return_date: string | null; title: string }
 type Borrower = { name: string; phone: string; email: string; notes: string; total: number; active: number; oldest_active: string | null }
-type Data = { books: Book[]; loans: Loan[]; borrowers: Borrower[]; stats: { books: number; lent: number; overdue: number }; version: string; settings: Record<string, any>; today: string; loanDays: number; dbPath: string; sources: string[][]; update: string | null }
+type Data = { books: Book[]; loans: Loan[]; borrowers: Borrower[]; stats: { books: number; lent: number; overdue: number }; version: string; settings: Record<string, any>; today: string; loanDays: number; dbPath: string; backupDir: string; sources: string[][]; update: string | null }
 type Kind = 'ok' | 'warn' | 'err' | 'info'
 type Form = { id: number | null; data: Record<string, string>; cover: string; coverData?: string }
 
 const api = () => (window as any).pywebview.api
 const FIELDS = ['isbn', 'title', 'authors', 'publisher', 'year', 'genre', 'pages', 'location', 'shelf', 'box', 'depth', 'read_date', 'summary', 'notes']
-const LABELS: Record<string, string> = { isbn: 'ISBN', title: 'Titre *', authors: 'Auteur(s)', publisher: 'Éditeur', year: 'Année', genre: 'Genre', pages: 'Pages', location: 'Meuble / pièce', shelf: 'Étage (1 = haut)', box: 'Box', depth: 'Rangée (1 = devant)', read_date: 'Lu le (JJ/MM/AAAA)', summary: 'Résumé', notes: 'Notes' }
+const LABELS: Record<string, string> = { isbn: 'ISBN', title: 'Titre *', authors: 'Auteur(s)', publisher: 'Éditeur', year: 'Année', genre: 'Genre', pages: 'Pages', location: 'Meuble / pièce', shelf: 'Étage (1 = haut)', box: 'Box', depth: 'Rangée (1 = devant)', read_date: 'Lu le', summary: 'Résumé', notes: 'Notes', rangement: 'Rangement' }
+// Rangement saisi en une case (« Salon › É2 › B3 › R2 ») : découpé en location / shelf / box / depth à l'enregistrement.
+const placeText = (d: Record<string, string>) => [d.location, d.shelf && `É${d.shelf}`, d.box && `B${d.box}`, d.depth && `R${d.depth}`].filter(Boolean).join(' › ')
+function parsePlace(text: string) {
+  const [location = '', ...rest] = text.split('›').map(s => s.trim())
+  const [shelf = '', box = '', depth = ''] = rest.map(s => s.replace(/^[ÉBR]\s*(?=\d)/i, ''))
+  return { location, shelf, box, depth }
+}
+// Les dates sont stockées AAAA-MM-JJ (comme l'application de bureau) ; affichées JJ/MM/AAAA.
+const isoToFr = (s: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? `${m[3]}/${m[2]}/${m[1]}` : s }
+const frToIso = (s: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : s }
+const formOf = (d: Record<string, any>): Record<string, string> => ({ ...Object.fromEntries(FIELDS.map(k => [k, d[k] ?? ''])), read_date: frToIso(d.read_date ?? ''), rangement: placeText(d) })
+const FORM_KEYS = ['isbn', 'title', 'authors', 'publisher', 'year', 'genre', 'pages', 'rangement', 'read_date', 'summary', 'notes']
 // Champs remplacés par « Actualiser les informations » (comme BookForm.ONLINE de la version Tkinter)
 const ONLINE = ['title', 'authors', 'publisher', 'year', 'genre', 'pages', 'summary']
 const SEARCH_IN: Record<string, string> = { all: 'Tout', title: 'Titre', authors: 'Auteur', year: 'Année', genre: 'Genre' }
@@ -49,7 +61,9 @@ const readImage = (file: File) => new Promise<string>((ok, ko) => { const r = ne
 export default function App() {
   const [data, setData] = useState<Data | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
-  const [section, setSection] = useState<'library' | 'loans' | 'borrowers' | 'stats' | 'about'>('library')
+  const [section, setSection] = useState<'library' | 'loans' | 'borrowers' | 'stats' | 'tools' | 'backups' | 'about'>('library')
+  const [backups, setBackups] = useState<{ name: string; date: string; size: number }[]>([])
+  const [backupBusy, setBackupBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [searchIn, setSearchIn] = useState('all')
   const [sortBy, setSortBy] = useState('authors')
@@ -77,6 +91,7 @@ export default function App() {
   const [focusAction, setFocusAction] = useState(0)
 
   const setStatus = (text: string, kind: Kind = 'info') => setStatusState({ text, kind })
+  useEffect(() => { if (section === 'backups') loadBackups() }, [section])
   const refocus = () => setTimeout(() => scanRef.current?.focus(), 0)
   async function reload() { const d: Data = await api().load(); setData(d); return d }
   /** Appel à Python avec message d'erreur dans la ligne de statut ; retourne undefined en cas d'échec. */
@@ -171,13 +186,15 @@ export default function App() {
     const d = await reload()
     if (res.select) show(res.select, d)
     if (res.open) setFocusAction(n => n + 1)
-    if (res.form) setForm({ id: null, data: res.form, cover: res.form.coverData || '', coverData: res.form.coverData })
+    if (res.form) setForm({ id: null, data: formOf(res.form), cover: res.form.coverData || '', coverData: res.form.coverData })
   }
 
   async function saveForm(e: React.FormEvent) {
     e.preventDefault()
     if (!form) return
-    const id = await call(() => api().save_book(form.id, form.data, form.coverData || null))
+    const { rangement, ...rest } = form.data
+    const data = rangement === undefined ? rest : { ...rest, ...parsePlace(rangement) }
+    const id = await call(() => api().save_book(form.id, data, form.coverData || null))
     if (id === undefined) return
     setStatus(form.id ? `Fiche modifiée : « ${form.data.title} ».` : `Ajouté : « ${form.data.title} ».`, 'ok')
     setForm(null)
@@ -261,6 +278,16 @@ export default function App() {
     if (res.added && confirm(`${msg}\n\n${note}\nCompléter maintenant les fiches (titre, auteur, éditeur, couverture…) via Internet ?`)) enrich()
   }
   async function exportCsv() { const path = await call(() => api().export_csv()); if (path) setStatus(`Exporté : ${path}`, 'ok') }
+  async function loadBackups() { setBackups(await call(() => api().backups()) ?? []) }
+  async function createBackup() {
+    setBackupBusy(true); const name = await call(() => api().create_backup()); setBackupBusy(false)
+    if (name) { setStatus(`Sauvegarde créée : ${name}`, 'ok'); loadBackups() }
+  }
+  async function restoreBackup(name: string) {
+    if (!confirm('Restaurer cette sauvegarde ? Les données actuelles seront remplacées. Une copie de sécurité sera créée avant la restauration.')) return
+    setBackupBusy(true); const done = await call(() => api().restore_backup(name)); setBackupBusy(false)
+    if (done !== undefined) { setSelected(null); setStatus('Sauvegarde restaurée.', 'ok'); reload(); loadBackups() }
+  }
   async function checkUpdate() { setStatus('Recherche de mise à jour…'); const msg = await call(() => api().check_update(true)); if (msg) setStatus(msg, msg.startsWith('Mise à jour impossible') ? 'err' : 'info') }
   async function installUpdate() {
     if (!update || !confirm(`Installer la version ${update.version} (actuelle : ${data?.version}) ?\n\n${update.notes}\n\nBookTek va redémarrer.`)) return
@@ -283,12 +310,7 @@ export default function App() {
         {nav('about', <Info />, 'À propos')}
       </nav>
       <div className="sidebottom">
-        <button onClick={() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.')}><Upload />Importer Book Collector</button>
-        <button onClick={() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.')}><FileText />Importer une liste d’ISBN</button>
-        <button onClick={enrich}><Globe />Compléter via Internet</button>
-        <button onClick={exportCsv}><Download />Exporter en CSV</button>
-        <button className={data?.settings.dark ? 'on' : ''} onClick={() => setting('dark', !data?.settings.dark)}><Moon />Thème sombre</button>
-        <button className={data?.settings.large ? 'on' : ''} onClick={() => setting('large', !data?.settings.large)}><Type />Grands caractères</button>
+        <button className={section === 'tools' ? 'on' : ''} onClick={() => setSection('tools')}><Wrench />Outils</button>
         <small>Vos données restent sur cet ordinateur.</small>
       </div>
     </aside>
@@ -332,7 +354,7 @@ export default function App() {
             </select>}
             <div className={view === 'grid' ? 'bookgrid' : 'booklist'}>
               {filtered.map(b => <button key={b.id} data-id={b.id} className={`booktile ${current?.id === b.id ? 'selected' : ''}`}
-                onClick={() => setSelected(b.id)} onDoubleClick={() => setForm({ id: b.id, data: Object.fromEntries(FIELDS.map(k => [k, (b as any)[k] ?? ''])), cover: b.cover })}
+                onClick={() => setSelected(b.id)} onDoubleClick={() => setForm({ id: b.id, data: formOf(b), cover: b.cover })}
                 onContextMenu={e => { e.preventDefault(); setSelected(b.id); setMenu({ x: e.clientX, y: e.clientY, book: b }) }}>
                 <div className="cover">{b.cover ? <img src={b.cover} loading="lazy" /> : <span className="notitle">{b.title}</span>}</div>
                 <b>{b.title}</b><small>{b.authors}</small>
@@ -354,7 +376,7 @@ export default function App() {
                   <span>Emplacement : <b>{current.place || 'Non renseigné'}</b></span>
                   <span>Parution : {current.year || '—'}</span>
                   <span>ISBN : {current.isbn || '—'}</span>
-                  {current.read_date && <span>Lu le : {current.read_date}</span>}
+                  {current.read_date && <span>Lu le : {isoToFr(current.read_date)}</span>}
                   <span>{currentLoan ? <b className={isOverdue(currentLoan) ? 'late-text' : ''}>Prêté à {currentLoan.borrower} depuis le {fmt(currentLoan.loan_date)}{currentLoan.due_date ? `, retour prévu le ${fmt(currentLoan.due_date)}` : ''}</b> : 'Disponible'}</span>
                 </div>
                 <div className="actions">
@@ -362,7 +384,7 @@ export default function App() {
                   {currentLoan
                     ? <button ref={actionRef} className="primary" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} onClick={() => giveBack(current.id, current.title)}><RotateCcw />Enregistrer le retour</button>
                     : <button ref={actionRef} className="primary" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} onClick={() => openLend(current)}><Handshake />Prêter…</button>}
-                  <button onClick={() => setForm({ id: current.id, data: Object.fromEntries(FIELDS.map(k => [k, (current as any)[k] ?? ''])), cover: current.cover })}><Pencil />Modifier…</button>
+                  <button onClick={() => setForm({ id: current.id, data: formOf(current), cover: current.cover })}><Pencil />Modifier…</button>
                   <button className="danger" onClick={() => deleteBook(current)}><Trash2 />Supprimer</button>
                 </div>
               </div>
@@ -429,6 +451,32 @@ export default function App() {
         <div><small>Genres représentés</small><strong>{genres.size}</strong></div>
       </div></section>}
 
+      {section === 'tools' && <section className="fullpanel">
+        <div className="pagehead"><div><h1>Outils</h1><p className="muted">Importer, exporter, sauvegarder et régler l’affichage.</p></div></div>
+        <h2>Données</h2>
+        <div className="toolgrid">
+          <button onClick={() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.')}><Upload />Importer Book Collector</button>
+          <button onClick={() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.')}><FileText />Importer une liste d’ISBN</button>
+          <button onClick={enrich}><Globe />Compléter via Internet</button>
+          <button onClick={exportCsv}><Download />Exporter en CSV</button>
+          <button onClick={() => setSection('backups')}><ShieldCheck />Sauvegardes…</button>
+        </div>
+        <h2>Affichage</h2>
+        <div className="toolgrid">
+          <button className="toggle" role="switch" aria-checked={!!data?.settings.dark} onClick={() => setting('dark', !data?.settings.dark)}><Moon />Thème sombre<i className={`track${data?.settings.dark ? ' on' : ''}`} /></button>
+          <button className="toggle" role="switch" aria-checked={!!data?.settings.large} onClick={() => setting('large', !data?.settings.large)}><Type />Grands caractères<i className={`track${data?.settings.large ? ' on' : ''}`} /></button>
+        </div>
+      </section>}
+
+      {section === 'backups' && <section className="fullpanel backup-panel">
+        <div className="pagehead"><div><h1>Sauvegardes</h1><p className="muted">Copies de la base de données et des jaquettes.</p></div>
+          <button className="primary" onClick={createBackup} disabled={backupBusy}><Download size={16} />{backupBusy ? 'En cours…' : 'Créer une sauvegarde'}</button></div>
+        <div className="backup-info"><ShieldCheck /><div><b>Sauvegarde automatique</b><p>BookTek crée une sauvegarde au lancement, au maximum une fois par jour. Les 10 dernières sont conservées.</p><small>Dossier : {data?.backupDir}</small></div></div>
+        <div className="backup-list-head"><h2>Historique des sauvegardes</h2><button onClick={loadBackups}><RefreshCw size={15} /> Actualiser</button></div>
+        {backups.map(item => <div className="backup-row" key={item.name}><div><b><Clock size={15} />{new Date(item.date).toLocaleString('fr-FR')}</b><small>{item.name} · {(item.size / 1024).toFixed(1)} Ko</small></div><button disabled={backupBusy} onClick={() => restoreBackup(item.name)}><RotateCcw size={15} /> Restaurer</button></div>)}
+        {backups.length === 0 && <div className="empty">Aucune sauvegarde pour le moment.</div>}
+      </section>}
+
       {section === 'about' && <section className="fullpanel">
         <div className="pagehead"><div><h1>BookTek {data?.version}</h1><p className="muted">Gestion de bibliothèque par lecture d’ISBN.</p></div>
           <button className="primary" onClick={checkUpdate}><RefreshCw size={16} />Rechercher une mise à jour</button></div>
@@ -442,16 +490,18 @@ export default function App() {
     {menu && <div className="contextmenu" style={{ left: menu.x, top: menu.y }}>
       <button onClick={() => refreshCover(menu.book)}><ImageIcon size={15} />Actualiser la jaquette…</button>
       <button onClick={() => refreshInfo(menu.book)}><RefreshCw size={15} />Actualiser les informations…</button>
-      <button onClick={() => setForm({ id: menu.book.id, data: Object.fromEntries(FIELDS.map(k => [k, (menu.book as any)[k] ?? ''])), cover: menu.book.cover })}><Pencil size={15} />Modifier…</button>
+      <button onClick={() => setForm({ id: menu.book.id, data: formOf(menu.book), cover: menu.book.cover })}><Pencil size={15} />Modifier…</button>
     </div>}
 
     {form && <div className="modalback"><form className="modal bookform" onSubmit={saveForm}>
       <div className="modalhead"><h2>{form.id ? 'Modifier le livre' : 'Nouveau livre'}</h2><button type="button" onClick={() => { setForm(null); refocus() }}><X /></button></div>
       <div className="formbody">
-        <div className="formgrid">{FIELDS.map(k => <label key={k} className={k === 'summary' || k === 'notes' ? 'wide' : ''}>{LABELS[k]}
+        <div className="formgrid">{FORM_KEYS.map(k => <label key={k} className={['title', 'summary', 'notes'].includes(k) ? 'wide' : ''}>{LABELS[k]}
           {k === 'summary' || k === 'notes'
             ? <textarea rows={k === 'summary' ? 5 : 2} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />
-            : <input required={k === 'title'} autoFocus={k === 'title'} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />}
+            : k === 'read_date'
+              ? <input type="date" value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />
+              : <input required={k === 'title'} autoFocus={k === 'title'} placeholder={k === 'rangement' ? 'Salon › É2 › B3 › R2' : undefined} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />}
         </label>)}</div>
         <div className="formcover">
           <div className="bigcover">{form.cover ? <img src={form.cover} /> : <BookOpen size={50} />}</div>
