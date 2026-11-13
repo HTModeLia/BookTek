@@ -37,3 +37,15 @@ python main.py                              # lancer depuis les sources
 python -m unittest discover -s tests        # tests
 python tools/release.py --dry-run           # construire l'exe sans publier
 ```
+
+### Interface web (branche `webview`)
+
+Sur cette branche, l'interface reprend le visuel de la maquette Electron, affichée par pywebview (Edge WebView2). Il faut en plus Node.js pour construire l'interface. Détails et choix techniques : [docs/interface-web.md](docs/interface-web.md).
+
+```
+pip install pywebview                       # une fois
+cd web && npm install && npm run build      # après chaque modification de web/src
+cd .. && python main.py                     # interface web ; --tk pour l'ancienne interface
+```
+
+Depuis les sources, la base utilisée est le `booktek.db` du dossier du projet : faire une copie avant de tester.
