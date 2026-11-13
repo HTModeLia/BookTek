@@ -11,7 +11,19 @@ type Form = { id: number | null; data: Record<string, string>; cover: string; co
 
 const api = () => (window as any).pywebview.api
 const FIELDS = ['isbn', 'title', 'authors', 'publisher', 'year', 'genre', 'pages', 'location', 'shelf', 'box', 'depth', 'read_date', 'summary', 'notes']
-const LABELS: Record<string, string> = { isbn: 'ISBN', title: 'Titre *', authors: 'Auteur(s)', publisher: 'Éditeur', year: 'Année', genre: 'Genre', pages: 'Pages', location: 'Meuble / pièce', shelf: 'Étage (1 = haut)', box: 'Box', depth: 'Rangée (1 = devant)', read_date: 'Lu le (JJ/MM/AAAA)', summary: 'Résumé', notes: 'Notes' }
+const LABELS: Record<string, string> = { isbn: 'ISBN', title: 'Titre *', authors: 'Auteur(s)', publisher: 'Éditeur', year: 'Année', genre: 'Genre', pages: 'Pages', location: 'Meuble / pièce', shelf: 'Étage (1 = haut)', box: 'Box', depth: 'Rangée (1 = devant)', read_date: 'Lu le', summary: 'Résumé', notes: 'Notes', rangement: 'Rangement' }
+// Rangement saisi en une case (« Salon › É2 › B3 › R2 ») : découpé en location / shelf / box / depth à l'enregistrement.
+const placeText = (d: Record<string, string>) => [d.location, d.shelf && `É${d.shelf}`, d.box && `B${d.box}`, d.depth && `R${d.depth}`].filter(Boolean).join(' › ')
+function parsePlace(text: string) {
+  const [location = '', ...rest] = text.split('›').map(s => s.trim())
+  const [shelf = '', box = '', depth = ''] = rest.map(s => s.replace(/^[ÉBR]\s*(?=\d)/i, ''))
+  return { location, shelf, box, depth }
+}
+// Les dates sont stockées AAAA-MM-JJ (comme l'application de bureau) ; affichées JJ/MM/AAAA.
+const isoToFr = (s: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? `${m[3]}/${m[2]}/${m[1]}` : s }
+const frToIso = (s: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : s }
+const formOf = (d: Record<string, any>): Record<string, string> => ({ ...Object.fromEntries(FIELDS.map(k => [k, d[k] ?? ''])), read_date: frToIso(d.read_date ?? ''), rangement: placeText(d) })
+const FORM_KEYS = ['isbn', 'title', 'authors', 'publisher', 'year', 'genre', 'pages', 'rangement', 'read_date', 'summary', 'notes']
 // Champs remplacés par « Actualiser les informations » (comme BookForm.ONLINE de la version Tkinter)
 const ONLINE = ['title', 'authors', 'publisher', 'year', 'genre', 'pages', 'summary']
 const SEARCH_IN: Record<string, string> = { all: 'Tout', title: 'Titre', authors: 'Auteur', year: 'Année', genre: 'Genre' }
@@ -174,13 +186,15 @@ export default function App() {
     const d = await reload()
     if (res.select) show(res.select, d)
     if (res.open) setFocusAction(n => n + 1)
-    if (res.form) setForm({ id: null, data: res.form, cover: res.form.coverData || '', coverData: res.form.coverData })
+    if (res.form) setForm({ id: null, data: formOf(res.form), cover: res.form.coverData || '', coverData: res.form.coverData })
   }
 
   async function saveForm(e: React.FormEvent) {
     e.preventDefault()
     if (!form) return
-    const id = await call(() => api().save_book(form.id, form.data, form.coverData || null))
+    const { rangement, ...rest } = form.data
+    const data = rangement === undefined ? rest : { ...rest, ...parsePlace(rangement) }
+    const id = await call(() => api().save_book(form.id, data, form.coverData || null))
     if (id === undefined) return
     setStatus(form.id ? `Fiche modifiée : « ${form.data.title} ».` : `Ajouté : « ${form.data.title} ».`, 'ok')
     setForm(null)
@@ -340,7 +354,7 @@ export default function App() {
             </select>}
             <div className={view === 'grid' ? 'bookgrid' : 'booklist'}>
               {filtered.map(b => <button key={b.id} data-id={b.id} className={`booktile ${current?.id === b.id ? 'selected' : ''}`}
-                onClick={() => setSelected(b.id)} onDoubleClick={() => setForm({ id: b.id, data: Object.fromEntries(FIELDS.map(k => [k, (b as any)[k] ?? ''])), cover: b.cover })}
+                onClick={() => setSelected(b.id)} onDoubleClick={() => setForm({ id: b.id, data: formOf(b), cover: b.cover })}
                 onContextMenu={e => { e.preventDefault(); setSelected(b.id); setMenu({ x: e.clientX, y: e.clientY, book: b }) }}>
                 <div className="cover">{b.cover ? <img src={b.cover} loading="lazy" /> : <span className="notitle">{b.title}</span>}</div>
                 <b>{b.title}</b><small>{b.authors}</small>
@@ -362,7 +376,7 @@ export default function App() {
                   <span>Emplacement : <b>{current.place || 'Non renseigné'}</b></span>
                   <span>Parution : {current.year || '—'}</span>
                   <span>ISBN : {current.isbn || '—'}</span>
-                  {current.read_date && <span>Lu le : {current.read_date}</span>}
+                  {current.read_date && <span>Lu le : {isoToFr(current.read_date)}</span>}
                   <span>{currentLoan ? <b className={isOverdue(currentLoan) ? 'late-text' : ''}>Prêté à {currentLoan.borrower} depuis le {fmt(currentLoan.loan_date)}{currentLoan.due_date ? `, retour prévu le ${fmt(currentLoan.due_date)}` : ''}</b> : 'Disponible'}</span>
                 </div>
                 <div className="actions">
@@ -370,7 +384,7 @@ export default function App() {
                   {currentLoan
                     ? <button ref={actionRef} className="primary" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} onClick={() => giveBack(current.id, current.title)}><RotateCcw />Enregistrer le retour</button>
                     : <button ref={actionRef} className="primary" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} onClick={() => openLend(current)}><Handshake />Prêter…</button>}
-                  <button onClick={() => setForm({ id: current.id, data: Object.fromEntries(FIELDS.map(k => [k, (current as any)[k] ?? ''])), cover: current.cover })}><Pencil />Modifier…</button>
+                  <button onClick={() => setForm({ id: current.id, data: formOf(current), cover: current.cover })}><Pencil />Modifier…</button>
                   <button className="danger" onClick={() => deleteBook(current)}><Trash2 />Supprimer</button>
                 </div>
               </div>
@@ -476,16 +490,18 @@ export default function App() {
     {menu && <div className="contextmenu" style={{ left: menu.x, top: menu.y }}>
       <button onClick={() => refreshCover(menu.book)}><ImageIcon size={15} />Actualiser la jaquette…</button>
       <button onClick={() => refreshInfo(menu.book)}><RefreshCw size={15} />Actualiser les informations…</button>
-      <button onClick={() => setForm({ id: menu.book.id, data: Object.fromEntries(FIELDS.map(k => [k, (menu.book as any)[k] ?? ''])), cover: menu.book.cover })}><Pencil size={15} />Modifier…</button>
+      <button onClick={() => setForm({ id: menu.book.id, data: formOf(menu.book), cover: menu.book.cover })}><Pencil size={15} />Modifier…</button>
     </div>}
 
     {form && <div className="modalback"><form className="modal bookform" onSubmit={saveForm}>
       <div className="modalhead"><h2>{form.id ? 'Modifier le livre' : 'Nouveau livre'}</h2><button type="button" onClick={() => { setForm(null); refocus() }}><X /></button></div>
       <div className="formbody">
-        <div className="formgrid">{FIELDS.map(k => <label key={k} className={k === 'summary' || k === 'notes' ? 'wide' : ''}>{LABELS[k]}
+        <div className="formgrid">{FORM_KEYS.map(k => <label key={k} className={['title', 'summary', 'notes'].includes(k) ? 'wide' : ''}>{LABELS[k]}
           {k === 'summary' || k === 'notes'
             ? <textarea rows={k === 'summary' ? 5 : 2} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />
-            : <input required={k === 'title'} autoFocus={k === 'title'} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />}
+            : k === 'read_date'
+              ? <input type="date" value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />
+              : <input required={k === 'title'} autoFocus={k === 'title'} placeholder={k === 'rangement' ? 'Salon › É2 › B3 › R2' : undefined} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />}
         </label>)}</div>
         <div className="formcover">
           <div className="bigcover">{form.cover ? <img src={form.cover} /> : <BookOpen size={50} />}</div>

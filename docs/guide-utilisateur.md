@@ -159,9 +159,9 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
   - **Titre** ;
   - **Année** de parution ;
   - **Genre** : à saisir dans la fiche du livre, ou récupéré en ligne par *Compléter les fiches via Internet* (Google Books ou Open Library, catégories souvent en anglais) ;
-  - **Lu le** : date de lecture, à saisir dans la fiche du livre au format `JJ/MM/AAAA` ;
+  - **Lu le** : date de lecture, à choisir dans la fiche du livre avec le calendrier ;
   - **Emplacement** : dans l'ordre du rangement, l'étage 2 avant l'étage 10.
-- **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**.
+- **Modifier** : sélectionnez un livre puis cliquez sur **Modifier…**. Dans la fiche, le **Rangement** tient en une seule case, au format `Meuble › É2 › B3 › R2` (étage, box et rangée facultatifs) ; la **Date de lecture** s'ouvre sur un calendrier.
 - **Actualiser les informations** : dans **Modifier…**, ce bouton (à droite, sous ceux de la jaquette) cherche en ligne, d'après l'ISBN, le titre, les auteurs, l'éditeur, l'année, le genre, le nombre de pages et le résumé, et remplace ceux du formulaire. L'emplacement, la date de lecture et les notes ne changent pas. Vérifiez puis cliquez sur **Enregistrer** ; **Annuler** garde la fiche telle qu'elle était.
 - **Clic droit sur un livre** (en Liste comme en Miniatures) : un menu propose **Actualiser la jaquette…**, **Actualiser les informations…** et **Modifier…**. Sans ouvrir la fiche : **Actualiser la jaquette…** cherche en ligne et affiche les jaquettes trouvées, celle sur laquelle vous cliquez est enregistrée ; **Actualiser les informations…** cherche en ligne et affiche ce qui va changer, enregistré seulement si vous répondez **Oui**.
 - **Jaquette** : dans **Modifier…**, la jaquette s'affiche à droite du formulaire.

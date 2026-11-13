@@ -2,6 +2,13 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.16.0] - 2026-11-13
+
+### Modifications
+- Dans la fiche d'un livre (**Modifier…**), le **Titre** occupe toute la largeur du formulaire.
+- Le **Rangement** se saisit dans une seule case, au format `Salon › É2 › B3 › R2` (étage, box et rangée facultatifs).
+- La **Lu le** se choisit dans un calendrier.
+
 ## [1.15.1] - 2026-11-13
 
 ### Corrections
