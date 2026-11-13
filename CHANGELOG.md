@@ -2,6 +2,11 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.15.1] - 2026-11-13
+
+### Corrections
+- Les jaquettes de la liste et des miniatures gardent leur proportion quand la fenêtre change de taille.
+
 ## [1.15.0] - 2026-11-13
 
 ### Modifications
