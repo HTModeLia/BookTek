@@ -33,3 +33,6 @@ html.dark{filter:invert(1) hue-rotate(180deg);background:#fff}html.dark img{filt
 .actions .primary,.modalactions .primary{background:#2175e8;border-color:#2175e8;color:#fff}
 .modal.bookform .formgrid{gap:9px 13px}
 html.dark .sidebar{filter:invert(1) hue-rotate(180deg)}html.dark .sidebar img{filter:none}
+
+/* Fond transparent derrière le menu Outils : un clic ailleurs le referme */
+.menuback{position:fixed;inset:0;z-index:19}

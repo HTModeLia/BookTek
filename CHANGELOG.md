@@ -2,6 +2,12 @@
 
 Les sections de ce fichier servent de notes de version : `tools/release.py` publie la section correspondant à la version en cours comme description de la release GitHub, affichée aussi dans l'application au moment d'installer une mise à jour.
 
+## [1.13.0] - 2026-11-13
+
+### Modifications
+- Les actions de la barre latérale (importer, compléter via Internet, exporter, thème sombre, grands caractères) sont regroupées dans un menu **Outils**.
+- L'écran **Sauvegardes** s'ouvre désormais depuis **Outils > Sauvegardes…**.
+
 ## [1.12.0] - 2026-11-13
 
 ### Ajouts

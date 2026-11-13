@@ -1,6 +1,6 @@
 // Interface BookTek : visuel de la maquette Electron, données et logique en Python (booktek/web.py).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock } from 'lucide-react'
+import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench } from 'lucide-react'
 
 type Book = { id: number; isbn: string | null; title: string; authors: string; publisher: string; year: string; genre: string; pages: string; location: string; shelf: string; box: string; depth: string; read_date: string; summary: string; notes: string; borrower: string | null; due_date: string | null; place: string; cover: string }
 type Loan = { id: number; book_id: number; borrower: string; loan_date: string; due_date: string | null; return_date: string | null; title: string }
@@ -52,6 +52,8 @@ export default function App() {
   const [section, setSection] = useState<'library' | 'loans' | 'borrowers' | 'stats' | 'backups' | 'about'>('library')
   const [backups, setBackups] = useState<{ name: string; date: string; size: number }[]>([])
   const [backupBusy, setBackupBusy] = useState(false)
+  const [tools, setTools] = useState<{ x: number; bottom: number } | null>(null)
+  const toolsRef = useRef<HTMLButtonElement>(null)
   const [query, setQuery] = useState('')
   const [searchIn, setSearchIn] = useState('all')
   const [sortBy, setSortBy] = useState('authors')
@@ -264,6 +266,13 @@ export default function App() {
     if (res.added && confirm(`${msg}\n\n${note}\nCompléter maintenant les fiches (titre, auteur, éditeur, couverture…) via Internet ?`)) enrich()
   }
   async function exportCsv() { const path = await call(() => api().export_csv()); if (path) setStatus(`Exporté : ${path}`, 'ok') }
+  /** Ouvre le menu Outils à droite du bouton, au-dessus de celui-ci (il est en bas de la barre latérale). */
+  function openTools() {
+    const r = toolsRef.current!.getBoundingClientRect()
+    setTools(tools ? null : { x: r.right + 8, bottom: window.innerHeight - r.bottom })
+  }
+  /** Exécute une action du menu Outils, puis referme le menu. */
+  const run = (fn: () => void) => () => { setTools(null); fn() }
   async function loadBackups() { setBackups(await call(() => api().backups()) ?? []) }
   async function createBackup() {
     setBackupBusy(true); const name = await call(() => api().create_backup()); setBackupBusy(false)
@@ -293,18 +302,24 @@ export default function App() {
         {nav('loans', <Handshake />, 'Mes prêts')}
         {nav('borrowers', <Users />, 'Emprunteurs')}
         {nav('stats', <BarChart3 />, 'Statistiques')}
-        {nav('backups', <ShieldCheck />, 'Sauvegardes')}
         {nav('about', <Info />, 'À propos')}
       </nav>
       <div className="sidebottom">
-        <button onClick={() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.')}><Upload />Importer Book Collector</button>
-        <button onClick={() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.')}><FileText />Importer une liste d’ISBN</button>
-        <button onClick={enrich}><Globe />Compléter via Internet</button>
-        <button onClick={exportCsv}><Download />Exporter en CSV</button>
-        <button className={data?.settings.dark ? 'on' : ''} onClick={() => setting('dark', !data?.settings.dark)}><Moon />Thème sombre</button>
-        <button className={data?.settings.large ? 'on' : ''} onClick={() => setting('large', !data?.settings.large)}><Type />Grands caractères</button>
+        <button ref={toolsRef} className={tools ? 'on' : ''} onClick={openTools}><Wrench />Outils</button>
         <small>Vos données restent sur cet ordinateur.</small>
       </div>
+      {tools && <>
+        <div className="menuback" onClick={() => setTools(null)} />
+        <div className="contextmenu" style={{ left: tools.x, bottom: tools.bottom }}>
+          <button onClick={run(() => importFile('import_bkc', 'Le fichier .bkc ne contient pas les auteurs de façon exploitable.'))}><Upload size={15} />Importer Book Collector</button>
+          <button onClick={run(() => importFile('import_isbn_list', 'Le fichier ne contient que les ISBN.'))}><FileText size={15} />Importer une liste d’ISBN</button>
+          <button onClick={run(enrich)}><Globe size={15} />Compléter via Internet</button>
+          <button onClick={run(exportCsv)}><Download size={15} />Exporter en CSV</button>
+          <button onClick={run(() => setSection('backups'))}><ShieldCheck size={15} />Sauvegardes…</button>
+          <button onClick={run(() => setting('dark', !data?.settings.dark))}><Moon size={15} />Thème sombre{data?.settings.dark ? ' : activé' : ''}</button>
+          <button onClick={run(() => setting('large', !data?.settings.large))}><Type size={15} />Grands caractères{data?.settings.large ? ' : activés' : ''}</button>
+        </div>
+      </>}
     </aside>
     <main className="main">
       <header className="topbar">
