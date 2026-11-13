@@ -17,6 +17,7 @@ python tools/bookcollector/tri_html.py
 3. **`tri_html.py`** construit `tri.html`, à ouvrir dans un navigateur. Chaque image y apparaît avec sa vignette, l'ISBN déduit et trois boutons : *Garder*, *Rejeter*, *Vérifier*.
    - **ISBN sûr** : chaque fiche des `.bkc` (y compris dans `Backup`) contient le chemin de l'image, l'ISBN et la vignette `Thumbnails\<md5>.png`. Chaque vignette est rattachée à son image par comparaison visuelle.
    - **ISBN à confirmer** : il vient de `livres_ocr.csv`. Les autres ISBN proposés sont cliquables, et l'ISBN reste modifiable à la main.
+   - Chaque ISBN a un lien vers la page qui montre le livre, avec l'ISBN surligné : la fiche BnF exacte (cherchée en ISBN-13 puis en ISBN-10, car les livres anciens n'y sont indexés qu'en ISBN-10), sinon la page Google Books. Le lien s'ouvre dans une fenêtre popup : ces sites refusent d'être affichés dans la page. Les liens sont cherchés à la génération et mis en cache dans `liens.json` (environ 5 minutes la première fois, à cause de la limite de débit de la BnF).
    - Les choix sont gardés dans le navigateur. **Exporter les décisions** produit `booktek_tri.csv`, qui se recharge avec *Reprendre un fichier de décisions*, par exemple sur un autre ordinateur. **Exporter les ISBN gardés** produit un fichier texte à importer dans BookTek (*import d'une liste d'ISBN*).
 
 `liste_html.py` et `choix_html.py` sont deux versions plus anciennes de la page de tri (une ligne par image, ou les doublons regroupés). Elles sont gardées pour mémoire.

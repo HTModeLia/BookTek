@@ -14,7 +14,8 @@ Les vignettes qui ne ressemblent à aucune image forment une section à part.
 Les choix sont gardés dans le navigateur et exportés en CSV ; ce CSV peut être
 rechargé dans la page (autre ordinateur, autre navigateur).
 """
-import csv, glob, json, os, re, sys, unicodedata
+import csv, glob, json, os, re, sys, time, unicodedata, urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image
 
@@ -22,7 +23,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 here = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "Book Collector")  # dossier Book Collector
 sys.path.insert(0, ROOT)
 from booktek.bkc_import import _THUMB, _ISBN, _U, _title_after
-from booktek.isbn import normalize
+from booktek.isbn import normalize, to10
+from booktek.lookup import _bnf_query, _DC
 
 _IMG = re.compile(re.escape(_U("\\Images\\")) + rb"((?:[\x20-\x7e]\x00)+?\.\x00(?:j\x00p\x00g|g\x00i\x00f|p\x00n\x00g)\x00)")
 SAME = 4  # écart visuel maximal entre une vignette et son image (mesuré : ~1-2 si identiques, >5 sinon)
@@ -45,6 +47,35 @@ def bkc_records():
             recs[h.group()] = {"image": imgs[-1] if imgs else "", "isbn": normalize(isbns[-1]) if isbns else None,
                                "title": _title_after(data, m.end())}
     return recs
+
+
+def find_link(isbn):
+    """[libellé, adresse] de la page en ligne qui montre ce livre, ISBN surligné ; None si introuvable.
+
+    BnF d'abord : fiche exacte, cherchée en ISBN-13 puis en ISBN-10 (les livres anciens n'y
+    sont indexés qu'en ISBN-10). Sinon Google Books, si sa page cite bien l'ISBN.
+    Le fragment « #:~:text= » fait surligner l'ISBN par le navigateur (Edge, Chrome).
+    """
+    for q in filter(None, (isbn, to10(isbn))):
+        for wait in (3, 10, 30, 0):  # la BnF limite le débit (429) : on patiente puis on réessaie
+            try:
+                rec = _bnf_query(q)
+                break
+            except Exception as e:
+                if "429" not in str(e) or not wait:
+                    raise  # pas mis en cache : réessayé au prochain lancement
+                time.sleep(wait)
+        ark = rec is not None and next((e.text for e in rec.findall(_DC + "identifier") if "ark:" in (e.text or "")), None)
+        if ark:  # la BnF affiche « ISBN 2-7441-7201-4 » : on surligne de « ISBN » au chiffre de contrôle
+            return ["voir à la BnF", ark.replace("http://", "https://") + f"#:~:text=ISBN,{q[-1]}"]
+    url = f"https://books.google.fr/books?vid=ISBN{isbn}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        if isbn in urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore"):
+            return ["voir sur Google Books", url + f"#:~:text={isbn}"]
+    except Exception:
+        pass
+    return None
 
 
 def signature(path):
@@ -104,6 +135,26 @@ for t in orphans:
                  "isbn": rec.get("isbn") or "", "source": "fiche Book Collector" if rec.get("isbn") else "",
                  "found": "", "others": [], "section": 4})
 rows.sort(key=lambda r: (r["section"], sort_key(r["title"]), r["id"]))
+
+# Lien en ligne de chaque ISBN (proposé ou alternatif), mis en cache : la recherche prend quelques minutes.
+cache_path = os.path.join(here, "liens.json")
+try:
+    links = json.load(open(cache_path, encoding="utf-8"))
+except FileNotFoundError:
+    links = {}
+todo = sorted({i for r in rows for i in [r["isbn"]] + r["others"] if i} - set(links))
+def safe_link(i):
+    try:
+        return find_link(i)
+    except Exception as e:
+        print(i, e)
+        return "erreur"
+
+
+for i, link in zip(todo, ThreadPoolExecutor(2).map(safe_link, todo)):
+    if link != "erreur":
+        links[i] = link
+json.dump(links, open(cache_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
 counts = {s: sum(r["section"] == s for r in rows) for s in (1, 2, 3, 4)}
 
 page = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Tri des livres</title>
@@ -143,17 +194,13 @@ const SECTIONS = {1: "ISBN de la fiche Book Collector (sûr)", 2: "ISBN proposé
 const KEY = 'booktek-tri';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cover = i => i ? `https://books.google.com/books/content?vid=ISBN${i}&printsec=frontcover&img=1&zoom=1` : '';
-// Site d'où vient l'ISBN : [libellé, adresse]. Une fiche Book Collector n'a pas de site : on vérifie à la BnF.
-// « #:~:text= » (fragment de texte) fait surligner l'ISBN par le navigateur à l'ouverture.
-const to10 = i => {  // la BnF indexe les livres anciens en ISBN-10 : la recherche en ISBN-13 ne les trouve pas
-  if (!/^978\d{10}$/.test(i)) return '';
-  const b = i.slice(3, 12), k = (11 - [...b].reduce((s, c, n) => s + (10 - n) * c, 0) % 11) % 11;
-  return b + (k == 10 ? 'X' : k);
-};
-// BnF affiche « ISBN 2-7441-7201-4 » : on surligne de « ISBN » jusqu'au chiffre de contrôle
-const BNF = i => { const q = to10(i) || i; return `https://catalogue.bnf.fr/rechercher.do?motRecherche=${q}#:~:text=ISBN,${q.slice(-1)}`; };
-const site = r => /Google/.test(r.source) ? ['voir sur Google Books', i => `https://books.google.fr/books?vid=ISBN${i}#:~:text=${i}`]
-                : /BnF/.test(r.source) ? ['voir à la BnF', BNF] : ['vérifier à la BnF', BNF];
+// Page en ligne de chaque ISBN, trouvée à la génération (fiche BnF, sinon Google Books), ISBN surligné ;
+// null : introuvable. Un ISBN tapé à la main n'y est pas : simple recherche au catalogue BnF.
+const LINKS = __LINKS__;
+const link = i => { i = i.replace(/[^0-9X]/gi, ''); return !i ? null : i in LINKS ? LINKS[i]
+  : ['chercher à la BnF', 'https://catalogue.bnf.fr/rechercher.do?motRecherche=' + i]; };
+const linkHtml = i => { const l = link(i);
+  return l ? `<a class="m" href="${esc(l[1])}" data-check>${l[0]}</a>` : (i ? '<span class="m">introuvable en ligne</span>' : ''); };
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
 const st = r => state[r.id] || {d: '', isbn: r.isbn};
@@ -176,7 +223,7 @@ function render() {
           <div>${esc(r.found)}</div><div class="m">${esc(r.source)}</div></td>
       <td><input class="isbn" value="${esc(s.isbn)}" placeholder="à scanner">
           <div class="alts">${r.others.map(o => `<a href="#" data-i="${o}">${o}</a>`).join('')}</div>
-          <a class="m" href="#" data-check>${site(r)[0]}</a></td>
+          <div class="lnk">${linkHtml(s.isbn)}</div></td>
       <td><img class="cov" src="${cover(s.isbn)}" loading="lazy" alt="" onerror="this.style.visibility='hidden'"></td></tr>`;
   }
   document.getElementById('list').innerHTML = html + '</tbody></table>';
@@ -209,15 +256,17 @@ list.addEventListener('click', e => {
     e.preventDefault(); const old = input.value; input.value = e.target.dataset.i;
     e.target.dataset.i = e.target.textContent = old; input.dispatchEvent(new Event('change', {bubbles: true}));
   } else if (e.target.hasAttribute('data-check')) {
-    // ces sites refusent d'être affichés dans la page (X-Frame-Options) : fenêtre popup, réutilisée d'un clic à l'autre
+    // ces sites refusent d'être affichés dans la page (X-Frame-Options) : fenêtre popup. « noopener » est
+    // indispensable : sans lui, le navigateur n'applique pas le surlignage (#:~:text=) sur un autre site.
     e.preventDefault();
-    window.open(site(r)[1](input.value.replace(/[^0-9X]/gi, '')), 'booktek-source', 'popup,width=1000,height=800');
+    window.open(e.target.href, '_blank', 'popup,noopener,width=1000,height=800');
   }
 });
 list.addEventListener('change', e => {
   if (!e.target.classList.contains('isbn')) return;
   const tr = e.target.closest('tr'), r = byId(tr.dataset.id), s = st(r), img = tr.querySelector('.cov');
   s.isbn = e.target.value.trim(); state[r.id] = s; save();
+  tr.querySelector('.lnk').innerHTML = linkHtml(s.isbn);
   img.style.visibility = ''; img.src = cover(s.isbn);
 });
 zoom.onclick = () => zoom.hidden = true;
@@ -255,6 +304,7 @@ render();
 </script></body></html>"""
 data = json.dumps(rows, ensure_ascii=False).replace("</", "<\\/")
 with open(os.path.join(here, "tri.html"), "w", encoding="utf-8") as f:
-    f.write(page.replace("__DATA__", data).replace("__COUNTS__", json.dumps(counts)))
+    f.write(page.replace("__DATA__", data).replace("__COUNTS__", json.dumps(counts))
+            .replace("__LINKS__", json.dumps(links, ensure_ascii=False)))
 print(f"{len(rows)} lignes : {counts[1]} ISBN Book Collector, {counts[2]} ISBN proposés, {counts[3]} sans ISBN, "
       f"{counts[4]} vignettes seules ; {len(recs)} fiches .bkc")
