@@ -319,7 +319,7 @@ export default function App() {
     </aside>
     <main className="main">
       {(pending > 0 || bgBusy) && <div className="progress" />}
-      {pending > 0 && <div className="waitcard"><span className="spinner" />Recherche en cours…</div>}
+      {(pending > 0 || bgBusy) && <div className="waitcard"><span className="spinner" />Recherche en cours…</div>}
       <header className="topbar">
         <div className="isbn"><Barcode />
           <input ref={scanRef} value={scan} onChange={e => setScan(e.target.value)} onKeyDown={e => e.key === 'Enter' && onScan()} placeholder="Scanner ou saisir un ISBN… (F2)" />
