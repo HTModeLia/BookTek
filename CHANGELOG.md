@@ -9,6 +9,7 @@ Les sections de ce fichier servent de notes de version : `tools/release.py` publ
 
 ### Modifications
 - La **liste des livres** est maintenant la partie large de l'écran, et la **fiche du livre** la partie étroite à droite.
+- En affichage **Miniatures**, les vignettes sont plus petites : il y en a davantage par ligne, selon la largeur de la fenêtre.
 
 ## [1.16.0] - 2026-11-13
 
