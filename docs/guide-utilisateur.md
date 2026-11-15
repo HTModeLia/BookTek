@@ -34,7 +34,7 @@ Au premier lancement, Windows peut afficher « Windows a protégé votre ordinat
   - vert : action réussie ;
   - orange : avertissement ;
   - rouge, avec un bip : erreur, par exemple un code invalide.
-- **Une barre bleue animée**, tout en haut de la fenêtre, défile tant qu'une recherche en ligne est en cours : ajout d'un livre, jaquettes, actualisation des informations, fiches complétées via Internet.
+- **Une barre bleue animée**, tout en haut de la fenêtre, défile tant qu'une recherche en ligne est en cours : ajout d'un livre, jaquettes, actualisation des informations, fiches complétées via Internet. Pour une recherche que vous venez de lancer (ajout, jaquette, actualisation), une carte « Recherche en cours… » avec une roue qui tourne s'affiche en plus au milieu de l'écran.
 - **Quatre onglets** :
   - **Bibliothèque** : tous les livres avec leur emplacement et leur statut (disponible ou prêté à quelqu'un) ;
   - **Prêts en cours** : les livres sortis, depuis combien de jours, les retards en rouge ;

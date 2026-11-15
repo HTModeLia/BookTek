@@ -5,7 +5,7 @@ Les sections de ce fichier servent de notes de version : `tools/release.py` publ
 ## [1.17.0] - 2026-11-15
 
 ### Ajouts
-- Une **barre bleue animée** défile en haut de la fenêtre pendant les recherches sur Internet (ajout d'un livre, jaquettes, actualisation des informations, fiches à compléter) : on voit que BookTek travaille.
+- Une **barre bleue animée** défile en haut de la fenêtre pendant les recherches sur Internet (ajout d'un livre, jaquettes, actualisation des informations, fiches à compléter) : on voit que BookTek travaille. Quand c'est vous qui lancez la recherche, une carte **« Recherche en cours… »** avec une roue qui tourne s'affiche aussi au milieu de l'écran, même par-dessus la fiche d'un livre.
 
 ## [1.16.0] - 2026-11-13
 
