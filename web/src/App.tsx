@@ -75,6 +75,8 @@ export default function App() {
   const [mode, setMode] = useState<'auto' | 'add' | 'return'>('auto')
   const [status, setStatusState] = useState<{ text: string; kind: Kind }>({ text: 'Prêt. Scannez un ISBN.', kind: 'info' })
   const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState(0)
+  const [bgBusy, setBgBusy] = useState(false)
   const [form, setForm] = useState<Form | null>(null)
   const [picker, setPicker] = useState<{ images: string[]; title: string; pick: (img: string) => void } | null>(null)
   const [zoom, setZoom] = useState(170)
@@ -96,7 +98,8 @@ export default function App() {
   async function reload() { const d: Data = await api().load(); setData(d); return d }
   /** Appel à Python avec message d'erreur dans la ligne de statut ; retourne undefined en cas d'échec. */
   async function call(fn: () => Promise<any>): Promise<any> {
-    try { return await fn() } catch (e) { setStatus(errText(e), 'err'); return undefined }
+    setPending(n => n + 1)
+    try { return await fn() } catch (e) { setStatus(errText(e), 'err'); return undefined } finally { setPending(n => n - 1) }
   }
   function setting(key: string, value: any) { api().set_setting(key, value); setData(d => d && { ...d, settings: { ...d.settings, [key]: value } }) }
 
@@ -110,7 +113,7 @@ export default function App() {
     }
     if ((window as any).pywebview?.api) start(); else window.addEventListener('pywebviewready', start, { once: true })
     ;(window as any).onPush = (m: any) => {
-      if (m.kind === 'status') { setStatus(m.text, m.level); if (m.refresh) reload() }
+      if (m.kind === 'status') { setStatus(m.text, m.level); if (m.refresh) reload(); if ('busy' in m) setBgBusy(m.busy) }
       if (m.kind === 'update') { setUpdate({ version: m.version, notes: m.notes }); setStatus(`Mise à jour ${m.version} prête : elle sera installée au prochain démarrage, ou cliquez sur « Mettre à jour ».`) }
     }
     // F2 : retour au champ ISBN ; un chiffre tapé hors d'un champ (douchette) y est redirigé
@@ -315,6 +318,7 @@ export default function App() {
       </div>
     </aside>
     <main className="main">
+      {(pending > 0 || bgBusy) && <div className="progress" />}
       <header className="topbar">
         <div className="isbn"><Barcode />
           <input ref={scanRef} value={scan} onChange={e => setScan(e.target.value)} onKeyDown={e => e.key === 'Enter' && onScan()} placeholder="Scanner ou saisir un ISBN… (F2)" />

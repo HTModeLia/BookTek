@@ -44,3 +44,6 @@ html.dark .sidebar{filter:invert(1) hue-rotate(180deg)}html.dark .sidebar img{fi
 .toolgrid .track{width:44px;height:24px;border-radius:12px;background:#c4cedc;position:relative;flex-shrink:0;margin-left:auto}
 .toolgrid .track::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
 .toolgrid .track.on{background:#2175e8}.toolgrid .track.on::after{left:23px}
+/* Barre animée pendant les recherches ; n'apparaît qu'après 0,3 s pour ne pas clignoter sur les actions rapides. */
+.progress{position:fixed;top:0;left:0;right:0;height:5px;overflow:hidden;z-index:100;background:#cfe0f8;animation:progress-show 0s .3s both}.progress::after{content:'';position:absolute;top:0;bottom:0;width:35%;background:#2175e8;border-radius:3px;animation:progress-slide 1.2s ease-in-out infinite}
+@keyframes progress-show{from{visibility:hidden}to{visibility:visible}}@keyframes progress-slide{from{left:-35%}to{left:100%}}

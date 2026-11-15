@@ -312,7 +312,7 @@ class Api:
                                  | self._write_cover(book_id, info.get("cover"), replace=False)):
                         found += 1
                 done = i == len(todo)
-                self._push("status", level="ok" if done else "info", refresh=done or i % 10 == 0,
+                self._push("status", level="ok" if done else "info", refresh=done or i % 10 == 0, busy=not done,
                            text=f"Terminé : {found} fiche(s) complétée(s) sur {len(todo)}." if done
                            else f"Recherche en ligne : {i}/{len(todo)} ({found} complétée(s))…")
 
