@@ -21,6 +21,7 @@ Toutes les fonctions sont bloquantes (délai de 8 s par requête) : dans
 l'interface, elles sont appelées depuis un thread secondaire.
 """
 import json
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
@@ -34,6 +35,7 @@ try:  # clé d'API Google Books : fichier local hors dépôt, embarqué dans l'e
 except ImportError:
     GOOGLE_KEY = ""  # sans clé : quota anonyme partagé, souvent épuisé (erreur 429)
 
+log = logging.getLogger(__name__)
 HEADERS = {"User-Agent": "BookTek/1.0"}
 #: Champs recherchés : clés de :data:`booktek.db.FIELDS`, plus ``cover`` (URL de la couverture).
 KEYS = ("title", "authors", "publisher", "year", "genre", "pages", "summary", "cover")
@@ -50,8 +52,14 @@ SOURCES = (
 )
 
 
+def _trace(url):
+    """Note la requête dans le journal verbeux, sans la clé d'API."""
+    log.debug("GET %s", re.sub(r"key=[^&]+", "key=***", url))
+
+
 def _get_json(url):
     """Télécharge et décode une réponse JSON."""
+    _trace(url)
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.load(resp)
@@ -59,6 +67,7 @@ def _get_json(url):
 
 def _get_bytes(url):
     """Télécharge le contenu brut de ``url`` (image de couverture)."""
+    _trace(url)
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return resp.read()
@@ -126,6 +135,7 @@ def _bnf_query(isbn):
     query = urllib.parse.quote(f'bib.isbn adj "{isbn}"')
     url = ("https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve"
            f"&recordSchema=dublincore&maximumRecords=1&query={query}")
+    _trace(url)
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         root = ET.fromstring(resp.read())
@@ -200,10 +210,14 @@ def fetch(isbn):
     sources = (bnf, google_books, open_library) if french else (google_books, open_library, bnf)
 
     def safe(source):
+        name = getattr(source, "__name__", source)  # les tests passent des Mock sans nom
         try:
-            return source(isbn)
-        except Exception:
+            info = source(isbn)
+        except Exception as exc:
+            log.debug("%s %s : erreur %s", name, isbn, exc)
             return {}
+        log.debug("%s %s : %s", name, isbn, ", ".join(sorted(info)) or "rien")
+        return info
 
     with ThreadPoolExecutor(len(sources)) as pool:
         infos = list(pool.map(safe, sources))  # dans l'ordre de priorité, quel que soit le plus rapide
@@ -274,7 +288,8 @@ def find_covers(isbn, title, authors, limit=12):
     def get(url):
         try:
             return _get_bytes(url)
-        except Exception:
+        except Exception as exc:
+            log.debug("Jaquette %s : erreur %s", url, exc)
             return b""
 
     with ThreadPoolExecutor(8) as pool:

@@ -34,7 +34,7 @@ Au premier lancement, Windows peut afficher « Windows a protégé votre ordinat
   - vert : action réussie ;
   - orange : avertissement ;
   - rouge, avec un bip : erreur, par exemple un code invalide.
-- **Une barre bleue animée**, tout en haut de la fenêtre, défile tant qu'une recherche en ligne est en cours : ajout d'un livre, jaquettes, actualisation des informations, fiches complétées via Internet. Une carte « Recherche en cours… » avec une roue qui tourne s'affiche en plus au milieu de l'écran.
+- **Une carte « Recherche en cours… »**, avec une roue qui tourne, s'affiche au milieu de l'écran tant qu'une recherche en ligne ou un import est en cours : ajout d'un livre, jaquettes, actualisation des informations, fiches complétées via Internet. Elle ne bloque pas : on peut continuer à cliquer.
 - **Quatre onglets** :
   - **Bibliothèque** : tous les livres avec leur emplacement et leur statut (disponible ou prêté à quelqu'un) ;
   - **Prêts en cours** : les livres sortis, depuis combien de jours, les retards en rouge ;
@@ -154,6 +154,7 @@ Le temps écoulé de chaque prêt figure aussi dans la colonne **Depuis** de l'o
 - **Lignes alternées** : dans les tableaux, une ligne sur deux est légèrement colorée pour suivre une ligne d'un bout à l'autre sans se tromper.
 - **Nombre de livres** : à côté du champ **Rechercher**, le nombre de livres affichés, recherche comprise.
 - **Thème sombre et grands caractères** : dans la page **Outils**, activez l'interrupteur **Thème sombre** (fond noir, texte blanc, fort contraste) et/ou **Grands caractères** (tout le texte agrandi). Le changement est immédiat et conservé au prochain lancement.
+- **Journal** (dépannage) : BookTek note ses actions et ses erreurs dans le fichier `booktek.log`, à côté de la base. Page **Outils**, rubrique **Journal** : **Ouvrir le journal** l'affiche dans le Bloc-notes ; l'interrupteur **Journal détaillé** y ajoute le détail de chaque opération et de chaque recherche sur Internet. À activer seulement le temps de reproduire un problème, puis à envoyer au mainteneur. Le fichier ne dépasse pas 1 Mo (les 3 précédents sont gardés : `booktek.log.1` à `.3`).
 - **Rechercher** : dans l'onglet Bibliothèque, tapez dans le champ **Rechercher**. Avec **Chercher dans : Tout**, la recherche porte sur le titre, les auteurs, l'année, le genre, l'ISBN, le meuble et le nom de l'emprunteur. Choisissez **Titre**, **Auteur**, **Année** ou **Genre** pour ne chercher que dans ce champ, par exemple tous les livres du genre « Thriller ».
 - **Trier** : choisissez un critère dans **Trier par** (Titre, Auteur, Année, Genre) et cochez **Décroissant** pour inverser l'ordre ; cela vaut pour les deux affichages. En vue Liste, on peut aussi cliquer sur l'en-tête d'une colonne ; un second clic inverse l'ordre, et une flèche ▲ ▼ indique le tri en cours. Le tri est conservé après chaque scan ou modification. On peut trier par :
   - **Auteur** : par le nom de famille du premier auteur ;

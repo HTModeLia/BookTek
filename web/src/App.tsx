@@ -271,6 +271,7 @@ export default function App() {
   }
   async function enrich() {
     const n = await call(() => api().enrich())
+    if (n) setBgBusy(true)  // sans attendre la première fiche traitée
     if (n !== undefined) setStatus(n ? `Recherche en ligne de ${n} fiche(s)…` : 'Toutes les fiches sont déjà complètes.', n ? 'info' : 'ok')
   }
   async function importFile(kind: 'import_bkc' | 'import_isbn_list', note: string) {
@@ -318,7 +319,6 @@ export default function App() {
       </div>
     </aside>
     <main className="main">
-      {(pending > 0 || bgBusy) && <div className="progress" />}
       {(pending > 0 || bgBusy) && <div className="waitcard"><span className="spinner" />Recherche en cours…</div>}
       <header className="topbar">
         <div className="isbn"><Barcode />
@@ -470,6 +470,11 @@ export default function App() {
         <div className="toolgrid">
           <button className="toggle" role="switch" aria-checked={!!data?.settings.dark} onClick={() => setting('dark', !data?.settings.dark)}><Moon />Thème sombre<i className={`track${data?.settings.dark ? ' on' : ''}`} /></button>
           <button className="toggle" role="switch" aria-checked={!!data?.settings.large} onClick={() => setting('large', !data?.settings.large)}><Type />Grands caractères<i className={`track${data?.settings.large ? ' on' : ''}`} /></button>
+        </div>
+        <h2>Journal</h2>
+        <div className="toolgrid">
+          <button className="toggle" role="switch" aria-checked={!!data?.settings.verbose_log} onClick={() => setting('verbose_log', !data?.settings.verbose_log)}><FileText />Journal détaillé (dépannage)<i className={`track${data?.settings.verbose_log ? ' on' : ''}`} /></button>
+          <button onClick={() => call(() => api().open_log())}><FileText />Ouvrir le journal</button>
         </div>
       </section>}
 

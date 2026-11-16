@@ -15,12 +15,21 @@ Threads : pywebview exécute chaque appel JavaScript dans son propre thread.
 Les accès à la base passent donc par le verrou ``Api._lock`` ; les recherches
 en ligne se font hors verrou. Un thread de fond prévient l'interface par
 :meth:`Api._push` (``window.onPush`` en JavaScript).
+
+Journal : ``booktek.log`` à côté de la base (:func:`setup_log`). En standard,
+les actions qui modifient les données, leur résultat et les erreurs ; en
+verbeux (réglage ``verbose_log``), aussi chaque appel de l'interface (arguments,
+durée, réponse) et chaque requête Internet de :mod:`booktek.lookup`.
 """
 import base64
 import csv
 import datetime as dt
+import functools
+import inspect
 import io
 import json
+import logging
+import logging.handlers
 import os
 import sqlite3
 import sys
@@ -52,6 +61,57 @@ except ImportError:
 DIST = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                     "web", "dist")
 
+log = logging.getLogger("booktek")
+
+#: Méthodes de :class:`Api` qui modifient les données : tracées dans le journal standard (les autres en verbeux).
+ACTIONS = {"scan", "save_book", "delete_book", "set_cover", "lend", "return_book", "save_borrower",
+           "delete_borrower", "import_bkc", "import_isbn_list", "enrich", "export_csv", "create_backup",
+           "restore_backup", "install_update", "set_setting"}
+
+
+def setup_log(folder, verbose):
+    """Écrit le journal dans ``folder/booktek.log`` (1 Mo, 3 anciens fichiers gardés) ; retourne son chemin."""
+    path = os.path.join(folder, "booktek.log")
+    handler = logging.handlers.RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s : %(message)s"))
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG if verbose else logging.INFO)
+    threading.excepthook = lambda a: log.error("Erreur dans un thread", exc_info=(a.exc_type, a.exc_value,
+                                                                                  a.exc_traceback))
+    return path
+
+
+def _short(value):
+    """Représentation tronquée pour le journal (les images ``data:`` font des centaines de Ko)."""
+    text = repr(value)
+    return text if len(text) <= 150 else text[:150] + "…"
+
+
+def _logged(fn):
+    """Trace un appel venu de l'interface : action, message de résultat et erreurs ; le reste en verbeux."""
+    name = fn.__name__
+
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        log.log(logging.INFO if name in ACTIONS else logging.DEBUG, "%s(%s)", name,
+                ", ".join(map(_short, args + tuple(kwargs.values()))))
+        start = time.monotonic()
+        try:
+            res = fn(self, *args, **kwargs)
+        except ValueError as exc:  # message prévu pour l'utilisateur
+            log.warning("%s : %s", name, exc)
+            raise
+        except Exception:
+            log.exception("%s : erreur inattendue", name)
+            raise
+        if isinstance(res, dict) and res.get("status"):
+            log.info("%s : %s", name, res["status"])
+        log.debug("%s -> %s (%.2f s)", name, _short(res), time.monotonic() - start)
+        return res
+
+    wrapper.__signature__ = inspect.signature(fn)  # pywebview y lit les paramètres de la fonction JavaScript
+    return wrapper
+
 
 def data_url(img):
     """Image (octets) -> adresse ``data:`` affichable directement par le navigateur."""
@@ -75,6 +135,7 @@ class Api:
         self._update_ready = None
         self._update_busy = False
         self._settings_path = os.path.join(os.path.dirname(db_path), "settings.json")
+        self._log_path = os.path.join(os.path.dirname(db_path), "booktek.log")  # écrit si setup_log() a été appelé
         try:
             with open(self._settings_path, encoding="utf-8") as f:
                 self._settings = json.load(f)
@@ -141,6 +202,8 @@ class Api:
     def set_setting(self, key, value):
         """Enregistre un réglage d'affichage (thème sombre, grands caractères…) dans ``settings.json``."""
         self._settings[key] = value
+        if key == "verbose_log":
+            log.setLevel(logging.DEBUG if value else logging.INFO)
         try:
             with open(self._settings_path, "w", encoding="utf-8") as f:
                 json.dump(self._settings, f)
@@ -306,12 +369,15 @@ class Api:
         def work():
             found = 0
             for i, (book_id, isbn) in enumerate(todo, 1):
+                log.debug("Complément %d/%d : livre %s, ISBN %s", i, len(todo), book_id, isbn)
                 info = lookup.fetch(isbn)
                 with self._lock:
                     if info and (self._lib.fill_missing(book_id, info)
                                  | self._write_cover(book_id, info.get("cover"), replace=False)):
                         found += 1
                 done = i == len(todo)
+                if done:
+                    log.info("Complément terminé : %d fiche(s) complétée(s) sur %d", found, len(todo))
                 self._push("status", level="ok" if done else "info", refresh=done or i % 10 == 0, busy=not done,
                            text=f"Terminé : {found} fiche(s) complétée(s) sur {len(todo)}." if done
                            else f"Recherche en ligne : {i}/{len(todo)} ({found} complétée(s))…")
@@ -332,6 +398,12 @@ class Api:
             for r in self._lib.search():
                 w.writerow([r[k] for k in FIELDS] + [r["borrower"] or "", fmt_date(r["due_date"])])
         return path
+
+    def open_log(self):
+        """Ouvre le journal dans le Bloc-notes (programme associé aux fichiers .log)."""
+        if not os.path.exists(self._log_path):
+            raise ValueError("Le journal est vide pour l'instant.")
+        os.startfile(self._log_path)
 
     def open_url(self, url):
         if url.startswith("https://"):
@@ -358,8 +430,8 @@ class Api:
         with self._lock:
             try:
                 backup.auto(self._db_path)
-            except (OSError, sqlite3.Error, zipfile.BadZipFile):
-                pass
+            except (OSError, sqlite3.Error, zipfile.BadZipFile) as exc:
+                log.warning("Sauvegarde automatique impossible : %s", exc)
 
     # ---- mises à jour (même logique que booktek.app) -------------------------
     def check_update(self, manual=False):
@@ -377,9 +449,11 @@ class Api:
             if updater.pending_version() != rel.version:
                 updater.download(rel)
             self._update_ready = rel
+            log.info("Mise à jour %s téléchargée", rel.version)
             self._push("update", version=rel.version, notes=rel.notes.strip()[:700])
             return f"Mise à jour {rel.version} prête."
         except Exception as exc:
+            log.warning("Mise à jour impossible : %s", exc)
             return f"Mise à jour impossible : {exc}"
         finally:
             self._update_busy = False
@@ -399,6 +473,11 @@ class Api:
             time.sleep(updater.CHECK_INTERVAL)
 
 
+for _name, _fn in list(vars(Api).items()):
+    if inspect.isfunction(_fn) and not _name.startswith("_"):
+        setattr(Api, _name, _logged(_fn))
+
+
 def make_server(api):
     """Serveur WSGI local : interface construite et jaquettes."""
     app = bottle.Bottle()
@@ -416,6 +495,8 @@ def main():
     if not os.path.exists(os.path.join(DIST, "index.html")):
         sys.exit("Interface absente : lancez « npm run build » dans le dossier web.")
     api = Api(os.path.join(data_dir(), "booktek.db"))
+    setup_log(data_dir(), api._settings.get("verbose_log"))
+    log.info("Démarrage de BookTek %s, base %s", __version__, api._db_path)
     api._window = webview.create_window(f"BookTek {__version__}", make_server(api), js_api=api,
                                         width=1280, height=800, min_size=(1050, 650), maximized=True,
                                         background_color="#f3f6fc")

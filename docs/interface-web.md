@@ -36,3 +36,11 @@ python main.py
 - Thème sombre obtenu par inversion des couleurs (raccourci, voir `style.css`).
 - Les polices DM Sans et Manrope viennent de Google Fonts : hors ligne, police système.
 - Sauvegardes reprises de la maquette Electron, mais sous forme d'archive ZIP (`booktek/backup.py`) : base + jaquettes, une par jour au lancement, 10 conservées, restauration avec copie de sécurité. Les sauvegardes JSON de la maquette ne sont pas reprises.
+
+## Journal
+
+`booktek.log` à côté de la base (`setup_log()` dans `web.py`, module `logging` standard, 1 Mo et 3 fichiers gardés).
+
+- Toutes les méthodes publiques de `Api` sont enveloppées par `_logged()` (boucle après la classe) : une nouvelle méthode est tracée sans rien ajouter. Le wrapper recopie la signature (`__signature__`), car pywebview lit les paramètres pour créer la fonction JavaScript.
+- **Standard** (INFO) : démarrage, appels de `ACTIONS` (méthodes qui modifient les données), message `status` renvoyé, erreurs (`ValueError` en WARNING, autres exceptions avec la pile), fin du complément, mises à jour, exceptions des threads.
+- **Verbeux** (DEBUG, réglage `verbose_log`, appliqué tout de suite) : tous les appels avec arguments tronqués, durée et réponse, et dans `lookup.py` chaque requête (clé Google masquée) et ce que chaque source a trouvé.
