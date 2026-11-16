@@ -275,10 +275,6 @@ def cover_urls(isbn, title, authors):
             except Exception:
                 pass
         add(f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false")
-        try:
-            add(babelio_cover(isbn))
-        except Exception as exc:
-            log.debug("babelio %s : erreur %s", isbn, exc)
     if title:
         author = (authors or "").split(",")[0].strip()
         q = f"intitle:{title}" + (f" inauthor:{author}" if author else "")
@@ -306,7 +302,8 @@ def find_covers(isbn, title, authors, limit=12):
     """Télécharge (en parallèle) les jaquettes de :func:`cover_urls` ; retourne au plus ``limit`` images (octets).
 
     Les images identiques et les vignettes vides (moins de 1 Ko : images
-    « pas de couverture » des catalogues) sont écartées.
+    « pas de couverture » des catalogues) sont écartées. Si rien n'est
+    utilisable, Babelio est essayé en dernier recours (:func:`babelio_cover`).
     """
     def get(url):
         try:
@@ -317,6 +314,12 @@ def find_covers(isbn, title, authors, limit=12):
 
     with ThreadPoolExecutor(8) as pool:
         images = list(pool.map(get, cover_urls(isbn, title, authors)[:limit * 2]))
+    if isbn and not any(len(img) >= 1000 for img in images):
+        try:
+            url = babelio_cover(isbn)
+            images.append(get(url) if url else b"")
+        except Exception as exc:  # dont 403 « Vérification de sécurité » si Babelio bloque BookTek
+            log.debug("babelio %s : erreur %s", isbn, exc)
     unique = []
     for img in images:
         if len(img) >= 1000 and img not in unique:

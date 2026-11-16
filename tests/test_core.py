@@ -81,8 +81,12 @@ class IsbnTest(unittest.TestCase):
                 raise OSError
             return imgs[url]
         with mock.patch.object(lookup, "cover_urls", return_value=["a", "b", "c", "e", "d"]), \
-                mock.patch.object(lookup, "_get_bytes", side_effect=get):
+                mock.patch.object(lookup, "_get_bytes", side_effect=get), \
+                mock.patch.object(lookup, "babelio_cover", return_value="d") as babelio:
             self.assertEqual(lookup.find_covers("x", "t", ""), [b"A" * 2000, b"D" * 3000])
+            babelio.assert_not_called()  # d'autres sources ont donné une image
+            lookup.cover_urls.return_value = ["c", "e"]
+            self.assertEqual(lookup.find_covers("x", "t", ""), [b"D" * 3000])  # Babelio en dernier recours
 
     def test_babelio_cover(self):
         """Jaquette lue dans og:image de la fiche ; ISBN inconnu (redirection vers l'accueil) -> ""."""
