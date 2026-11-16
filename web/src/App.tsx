@@ -30,6 +30,10 @@ const SEARCH_IN: Record<string, string> = { all: 'Tout', title: 'Titre', authors
 const SORTS: Record<string, string> = { title: 'Titre', authors: 'Auteur', year: 'Année', genre: 'Genre', place: 'Emplacement', read_date: 'Lu le' }
 const GROUPS: Record<string, string> = { '': 'Pas de regroupement', authors: 'Par auteur', year: 'Par année', genre: 'Par genre' }
 const NO_VALUE = '(non renseigné)'
+// Doublons possibles : même titre aux majuscules, accents et ponctuation près (l'ISBN, lui, est unique dans la base).
+// shortcut: titre seul, deux livres différents de même titre (« Poèmes ») ressortent aussi ; ajouter l'auteur si c'est gênant
+const dupKey = (b: Book) => b.title.normalize('NFD').replace(/[^\p{L}\p{N}]+/gu, '').toLocaleLowerCase('fr')
+const SHOW: Record<string, string> = { '': 'Tous les livres', dup: 'Doublons possibles', nocover: 'Sans jaquette' }
 
 const fmt = (iso?: string | null) => iso ? iso.split('-').reverse().join('/') : '—'
 const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000)
@@ -70,6 +74,7 @@ export default function App() {
   const [desc, setDesc] = useState(false)
   const [groupBy, setGroupBy] = useState('')
   const [groupValue, setGroupValue] = useState<string | null>(null)
+  const [only, setOnly] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [scan, setScan] = useState('')
   const [mode, setMode] = useState<'auto' | 'add' | 'return'>('auto')
@@ -158,11 +163,18 @@ export default function App() {
     for (const b of searched) for (const n of groupNames((b as any)[groupBy], groupBy)) count.set(n, (count.get(n) || 0) + 1)
     return [...count].sort((a, b) => compareKeys(sortKey(a[0], groupBy), sortKey(b[0], groupBy)))
   }, [searched, groupBy])
+  const showTest = useMemo(() => {
+    const count = new Map<string, number>()
+    for (const b of books) count.set(dupKey(b), (count.get(dupKey(b)) || 0) + 1)
+    return { '': () => true, dup: (b: Book) => count.get(dupKey(b))! > 1, nocover: (b: Book) => !b.cover } as Record<string, (b: Book) => boolean>
+  }, [books])
   const filtered = useMemo(() => {
-    const list = groupBy && groupValue !== null ? searched.filter(b => groupNames((b as any)[groupBy], groupBy).includes(groupValue)) : searched
+    let list = groupBy && groupValue !== null ? searched.filter(b => groupNames((b as any)[groupBy], groupBy).includes(groupValue)) : searched
+    list = list.filter(showTest[only])
     const sorted = [...list].sort((a, b) => compareKeys(sortKey((a as any)[sortBy], sortBy), sortKey((b as any)[sortBy], sortBy)))
+    if (only === 'dup') sorted.sort((a, b) => dupKey(a).localeCompare(dupKey(b)))  // stable : doublons côte à côte, tri choisi entre eux
     return desc ? sorted.reverse() : sorted
-  }, [searched, groupBy, groupValue, sortBy, desc])
+  }, [searched, groupBy, groupValue, sortBy, desc, only, showTest])
   const current = books.find(b => b.id === selected) ?? filtered[0]
   const activeLoans = loans.filter(l => !l.return_date)
   const overdueLoans = activeLoans.filter(isOverdue)
@@ -356,6 +368,7 @@ export default function App() {
         <div className="content">
           <section className="catalog">
             <div className="sectionhead"><div><h2>Ma collection</h2><small>{filtered.length} livre(s) affiché(s)</small></div>
+              <select value={only} onChange={e => setOnly(e.target.value)} title="Afficher">{Object.entries(SHOW).map(([k, v]) => <option key={k} value={k}>{v} ({books.filter(showTest[k]).length})</option>)}</select>
               <select value={groupBy} onChange={e => { setGroupBy(e.target.value); setGroupValue(null) }}>{Object.entries(GROUPS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             </div>
             {groupBy && <select className="groupselect" value={groupValue ?? ''} onChange={e => setGroupValue(e.target.value || null)}>
