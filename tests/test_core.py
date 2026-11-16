@@ -104,6 +104,26 @@ class IsbnTest(unittest.TestCase):
         with mock.patch.object(lookup.urllib.request, "urlopen", opener("https://www.babelio.com/")):
             self.assertEqual(lookup.babelio_cover("2290363133"), "")
 
+    def test_other_edition(self):
+        """Résumé et genre d'une autre édition au même titre principal ; autre tome écarté ; repli dans fetch."""
+        from unittest import mock
+        from booktek import lookup
+        items = {"items": [
+            {"volumeInfo": {"title": "Ludivine 2", "description": "Tome 2", "categories": ["Roman"]}},
+            {"volumeInfo": {"title": "LE CANAL silencieux", "description": "<p>Bon résumé</p>"}},
+            {"volumeInfo": {"title": "Le canal silencieux", "categories": ["Fiction"]}},
+        ]}
+        with mock.patch.object(lookup, "_get_json", return_value=items):
+            self.assertEqual(lookup.other_edition("Le Canal silencieux : roman", "A. Auteur, B"),
+                             {"summary": "Bon résumé", "genre": "Fiction"})
+            self.assertEqual(lookup.other_edition("Ludivine. 1", "A"), {})
+            with mock.patch.object(lookup, "bnf", return_value={"title": "Le canal silencieux", "authors": "A"}), \
+                    mock.patch.object(lookup, "google_books", return_value={}), \
+                    mock.patch.object(lookup, "open_library", return_value={}), \
+                    mock.patch.object(lookup, "_get_bytes", side_effect=OSError):
+                r = lookup.fetch("9782290254738")
+        self.assertEqual((r["summary"], r["genre"]), ("Bon résumé", "Fiction"))
+
     def test_qr(self):
         """Valeurs de référence de la norme : correction de « HELLO WORLD » en 1-M, format M masques 0 et 5."""
         from booktek import qr
@@ -168,6 +188,14 @@ class LibraryTest(unittest.TestCase):
         self.lib.lend(self.bid, "Paul", None)
         self.assertEqual(len(self.lib.history()), 2)
         self.assertEqual(self.lib.borrowers()[0], "Paul")
+
+    def test_checked_recently(self):
+        """Un livre cherché par le complément est laissé de côté pendant CHECK_DAYS jours."""
+        self.assertEqual(self.lib.checked_recently(), set())
+        self.lib.mark_checked(self.bid)
+        self.assertEqual(self.lib.checked_recently(), {self.bid})
+        self.lib.con.execute("UPDATE books SET checked_at = '2000-01-01'")
+        self.assertEqual(self.lib.checked_recently(), set())
 
     def test_fill_missing_keeps_title(self):
         self.lib.fill_missing(self.bid, {"title": "Autre", "authors": "Julia Quinn"})

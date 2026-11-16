@@ -1635,7 +1635,8 @@ class App(tk.Tk):
         todo = dict(self.lib.books_missing_info())
         todo.update((r["id"], r["isbn"]) for r in self.lib.search()
                     if r["isbn"] and not os.path.exists(self.cover_path(r["id"])))
-        todo = sorted(todo.items())
+        recent = self.lib.checked_recently()
+        todo = sorted((k, v) for k, v in todo.items() if k not in recent)
         if not todo:
             self.set_status("Toutes les fiches sont déjà complètes.", "ok")
             return
@@ -1643,6 +1644,7 @@ class App(tk.Tk):
         found = [0]  # liste pour pouvoir l'incrémenter depuis la fonction imbriquée
 
         def apply(book_id, info, i):
+            self.lib.mark_checked(book_id)
             if info and (self.lib.fill_missing(book_id, info) | self.save_cover(book_id, info)):
                 found[0] += 1
             self.set_status(f"Recherche en ligne : {i}/{len(todo)} ({found[0]} complétée(s))…", "info")

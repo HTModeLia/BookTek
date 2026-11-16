@@ -73,7 +73,11 @@ MIGRATIONS = [
     "ALTER TABLE books ADD COLUMN summary TEXT DEFAULT ''",
     # 3 : genre (filtre et tri de la bibliothèque)
     "ALTER TABLE books ADD COLUMN genre TEXT DEFAULT ''",
+    # 4 : date du dernier complément en ligne (voir Library.checked_recently)
+    "ALTER TABLE books ADD COLUMN checked_at TEXT DEFAULT ''",
 ]
+#: Jours pendant lesquels un livre déjà cherché en ligne n'est pas recherché à nouveau par le complément.
+CHECK_DAYS = 30
 
 
 def today():
@@ -184,15 +188,25 @@ class Library:
         ).fetchall()
 
     def books_missing_info(self):
-        """Livres ayant un ISBN mais sans auteur, éditeur ou nombre de pages (à compléter en ligne).
-
-        Le résumé et le genre ne comptent pas : ils manquent dans tous les catalogues pour la plupart
-        des éditions anciennes, qui seraient sinon recherchées à nouveau à chaque complément.
-        """
+        """Livres ayant un ISBN mais sans auteur, éditeur, nombre de pages, résumé ou genre (à compléter en ligne)."""
         return self.con.execute(
             "SELECT id, isbn FROM books WHERE isbn IS NOT NULL"
-            " AND (authors = '' OR publisher = '' OR pages = '')"
+            " AND (authors = '' OR publisher = '' OR pages = '' OR summary = '' OR genre = '')"
         ).fetchall()
+
+    def checked_recently(self):
+        """Ids des livres cherchés en ligne depuis moins de :data:`CHECK_DAYS` jours.
+
+        Le complément les laisse de côté : sinon, les livres qu'aucun catalogue ne connaît
+        entièrement (éditions anciennes, clubs) seraient recherchés pour rien à chaque fois.
+        """
+        since = (dt.date.today() - dt.timedelta(days=CHECK_DAYS)).isoformat()
+        return {r[0] for r in self.con.execute("SELECT id FROM books WHERE checked_at > ?", (since,))}
+
+    def mark_checked(self, book_id):
+        """Note que le livre vient d'être cherché en ligne par le complément."""
+        with self.con:
+            self.con.execute("UPDATE books SET checked_at = ? WHERE id = ?", (today(), book_id))
 
     def fill_missing(self, book_id, info):
         """Complète uniquement les champs vides du livre avec ``info``.

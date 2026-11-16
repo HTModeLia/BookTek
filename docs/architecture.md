@@ -88,6 +88,7 @@ Pour faire évoluer le schéma, **ajoutez** une migration en fin de liste, sans 
 | 1 | 1.2 | Rangement (`shelf`, `box`, `depth`), `read_date`, table `borrowers` |
 | 2 | 1.3 | `summary` (la couverture n'est pas en base : fichier `covers/<id>.jpg`) |
 | 3 | 1.4 | `genre` |
+| 4 | 1.17 | `checked_at` : date du dernier complément en ligne ; le livre est ignoré par le complément pendant `db.CHECK_DAYS` jours (hors `FIELDS`, non éditable) |
 
 Ajouter un champ de livre touche aussi : `db.FIELDS`, `app.LABELS` (formulaire), les colonnes du tableau dans `App._build()` et `refresh_books()`, l'export CSV, et éventuellement `lookup.KEYS` et `Library.fill_missing()`.
 

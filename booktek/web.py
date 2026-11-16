@@ -472,7 +472,8 @@ class Api:
             todo = dict(self._lib.books_missing_info())
             todo.update((r["id"], r["isbn"]) for r in self._lib.search()
                         if r["isbn"] and not os.path.exists(self._cover_path(r["id"])))
-        todo = sorted(todo.items())
+            recent = self._lib.checked_recently()
+        todo = sorted((k, v) for k, v in todo.items() if k not in recent)
         if not todo:
             return 0
 
@@ -482,6 +483,7 @@ class Api:
                 log.debug("Complément %d/%d : livre %s, ISBN %s", i, len(todo), book_id, isbn)
                 info = lookup.fetch(isbn)
                 with self._lock:
+                    self._lib.mark_checked(book_id)
                     if info and (self._lib.fill_missing(book_id, info)
                                  | self._write_cover(book_id, info.get("cover"), replace=False)):
                         found += 1

@@ -23,6 +23,7 @@ l'interface, elles sont appelées depuis un thread secondaire.
 import json
 import logging
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 import urllib.request
@@ -107,6 +108,38 @@ def google_books(isbn):
         "summary": re.sub(r"<[^>]+>", "", v.get("description", "")).strip(),  # description parfois en HTML
         "cover": (v.get("imageLinks") or {}).get("thumbnail", "").replace("http://", "https://"),
     }
+
+
+def _title_key(title):
+    """Titre principal (avant « : ») sans accents, majuscules ni ponctuation : « Le Canal silencieux : roman » -> « lecanalsilencieux »."""
+    text = unicodedata.normalize("NFD", title.split(" : ")[0]).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def other_edition(title, authors):
+    """Résumé et genre d'une autre édition du même livre (recherche Google Books par titre et premier auteur).
+
+    Utile pour les éditions de club ou anciennes, dont la fiche est vide alors que l'édition
+    originale a un résumé. Seuls les résultats au titre principal identique sont retenus :
+    « Ludivine. 1 » ne prend pas le résumé du tome 2.
+    """
+    key = _title_key(title)
+    author = authors.split(",")[0].strip()
+    if not key or not author:
+        return {}
+    q = f"intitle:{title.split(' : ')[0]} inauthor:{author}"
+    data = _get_json("https://www.googleapis.com/books/v1/volumes?maxResults=10&q=" + urllib.parse.quote(q)
+                     + (f"&key={GOOGLE_KEY}" if GOOGLE_KEY else ""))
+    found = {}
+    for item in data.get("items") or []:
+        v = item.get("volumeInfo", {})
+        if _title_key(v.get("title", "")) != key:
+            continue
+        if v.get("description"):
+            found.setdefault("summary", re.sub(r"<[^>]+>", "", v["description"]).strip())
+        if v.get("categories"):
+            found.setdefault("genre", ", ".join(v["categories"]))
+    return found
 
 
 def open_library(isbn):
@@ -200,7 +233,8 @@ def fetch(isbn):
     ISBN français (``978-2``, ``979-10``), en dernier pour les autres. Deux
     exceptions : le **résumé** retenu est le plus long, et la **couverture**
     est la première image qui se télécharge réellement, avec en dernier
-    recours la Covers API d'Open Library. Une source en erreur (réseau,
+    recours la Covers API d'Open Library. Un résumé ou un genre absent est
+    cherché dans une autre édition du même livre (:func:`other_edition`). Une source en erreur (réseau,
     quota, réponse inattendue) est simplement ignorée.
 
     Retourne un dict (seuls les champs trouvés sont présents), ou ``None`` si
@@ -227,6 +261,12 @@ def fetch(isbn):
         values = [info[k] for info in infos if info.get(k)]
         if values and k != "cover":
             result[k] = max(values, key=len) if k == "summary" else values[0]
+    if result.get("title") and result.get("authors") and not (result.get("summary") and result.get("genre")):
+        try:
+            for k, v in other_edition(result["title"], result["authors"]).items():
+                result.setdefault(k, v)
+        except Exception as exc:
+            log.debug("Autre édition %s : erreur %s", isbn, exc)
     covers = [info["cover"] for info in infos if info.get("cover")]
     for url in covers + [f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false"]:
         try:
