@@ -84,6 +84,22 @@ class IsbnTest(unittest.TestCase):
                 mock.patch.object(lookup, "_get_bytes", side_effect=get):
             self.assertEqual(lookup.find_covers("x", "t", ""), [b"A" * 2000, b"D" * 3000])
 
+    def test_babelio_cover(self):
+        """Jaquette lue dans og:image de la fiche ; ISBN inconnu (redirection vers l'accueil) -> ""."""
+        from unittest import mock
+        from booktek import lookup
+        page = b'<meta property="og:image" content="https://www.babelio.com/couv/CVT_x.jpg" />'
+
+        def opener(final_url):
+            resp = mock.MagicMock()
+            resp.__enter__.return_value = resp
+            resp.geturl.return_value, resp.read.return_value = final_url, page
+            return lambda *a, **k: resp
+        with mock.patch.object(lookup.urllib.request, "urlopen", opener("https://www.babelio.com/livres/X/1")):
+            self.assertEqual(lookup.babelio_cover("2738205674"), "https://www.babelio.com/couv/CVT_x.jpg")
+        with mock.patch.object(lookup.urllib.request, "urlopen", opener("https://www.babelio.com/")):
+            self.assertEqual(lookup.babelio_cover("2290363133"), "")
+
     def test_bnf_pages(self):
         self.assertEqual(_bnf_pages("1 vol. (586 p.) ; 24 cm"), "586")
         self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")

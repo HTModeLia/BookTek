@@ -49,6 +49,7 @@ SOURCES = (
     ("Open Library : Books API", "Fiche, genre, jaquette", "https://openlibrary.org/dev/docs/api/books"),
     ("Open Library : Search API", "Jaquettes d'autres éditions (par titre)", "https://openlibrary.org/dev/docs/api/search"),
     ("Open Library : Covers API", "Jaquettes", "https://openlibrary.org/dev/docs/api/covers"),
+    ("Babelio (fiche du livre)", "Jaquette, sur demande", "https://www.babelio.com"),
 )
 
 
@@ -236,6 +237,24 @@ def fetch(isbn):
     return result if result.get("title") else None
 
 
+def babelio_cover(isbn):
+    """Adresse de la jaquette Babelio de ``isbn`` (balise ``og:image`` de la fiche), ou ``""``.
+
+    Babelio n'a pas d'API et son ``robots.txt`` interdit ``/isbn`` aux robots : n'appeler qu'à la
+    demande de l'utilisateur, un livre à la fois (jamais dans le complément en masse). Un ISBN
+    inconnu redirige vers l'accueil, d'où le contrôle de l'adresse finale.
+    """
+    url = f"https://www.babelio.com/isbn/{isbn}"
+    _trace(url)
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        if "/livres/" not in resp.geturl():
+            return ""
+        page = resp.read().decode("latin-1")
+    m = re.search(r'<meta property="og:image" content="([^"]+)"', page)
+    return m.group(1) if m else ""
+
+
 def cover_urls(isbn, title, authors):
     """Adresses de jaquettes possibles, de la plus sûre à la moins sûre, sans doublon.
 
@@ -256,6 +275,10 @@ def cover_urls(isbn, title, authors):
             except Exception:
                 pass
         add(f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false")
+        try:
+            add(babelio_cover(isbn))
+        except Exception as exc:
+            log.debug("babelio %s : erreur %s", isbn, exc)
     if title:
         author = (authors or "").split(",")[0].strip()
         q = f"intitle:{title}" + (f" inauthor:{author}" if author else "")
