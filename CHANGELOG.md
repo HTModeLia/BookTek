@@ -7,6 +7,7 @@ Les sections de ce fichier servent de notes de version : `tools/release.py` publ
 ### Ajouts
 - Une carte **« Recherche en cours… »**, avec une roue qui tourne, s'affiche au milieu de l'écran pendant les recherches sur Internet (ajout d'un livre, jaquettes, actualisation des informations, fiches à compléter) et pendant les imports : on voit que BookTek travaille.
 - **Journal** : BookTek note ce qu'il fait dans un fichier `booktek.log`, à côté de la base, pour aider au dépannage. Dans **Outils**, rubrique **Journal**, le bouton **Ouvrir le journal** l'affiche, et l'interrupteur **Journal détaillé** y ajoute le détail de chaque opération et de chaque recherche sur Internet.
+- **Photo avec le téléphone…** dans la fiche d'un livre : un QR code s'affiche, il suffit de le viser avec le téléphone (sur le même Wi-Fi) et de photographier la couverture. La photo arrive directement dans la fiche, et on peut la reprendre autant de fois que nécessaire.
 - **Rechercher une jaquette…** consulte **Babelio** en dernier recours, quand les autres catalogues n'ont rien donné : il a souvent la couverture des éditions françaises anciennes ou de clubs absentes des autres catalogues.
 
 ### Modifications

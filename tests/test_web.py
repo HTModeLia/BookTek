@@ -55,5 +55,33 @@ class JournalTest(unittest.TestCase):
         self.assertNotIn("SECRET", self.read())
 
 
+@unittest.skipIf(web is None, "pywebview absent")
+class TelephoneTest(unittest.TestCase):
+    """Page « photo par téléphone » : jeton exigé, photo transmise, image illisible refusée."""
+
+    def test_envoi_photo(self):
+        import threading
+        import urllib.error
+        import urllib.request
+        got = []
+
+        def on_photo(img):
+            if img == b"mauvais":
+                raise ValueError("Image illisible")
+            got.append(img)
+        srv = web.phone_server("jeton", on_photo)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        url = f"http://127.0.0.1:{srv.server_port}/jeton"
+        self.assertIn(b"Prendre la photo", urllib.request.urlopen(url).read())
+        self.assertEqual(urllib.request.urlopen(urllib.request.Request(url, data=b"JPEG")).read(), b"ok")
+        self.assertEqual(got, [b"JPEG"])
+        for bad_url, data in ((url[:-5] + "autre", None), (url, b"mauvais")):
+            with self.assertRaises(urllib.error.HTTPError):
+                urllib.request.urlopen(urllib.request.Request(bad_url, data=data))
+        self.assertEqual(got, [b"JPEG"])
+
+
 if __name__ == "__main__":
     unittest.main()

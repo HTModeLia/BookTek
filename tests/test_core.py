@@ -104,6 +104,17 @@ class IsbnTest(unittest.TestCase):
         with mock.patch.object(lookup.urllib.request, "urlopen", opener("https://www.babelio.com/")):
             self.assertEqual(lookup.babelio_cover("2290363133"), "")
 
+    def test_qr(self):
+        """Valeurs de référence de la norme : correction de « HELLO WORLD » en 1-M, format M masques 0 et 5."""
+        from booktek import qr
+        data = [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17]
+        self.assertEqual(qr.rs_ecc(data, 10), [196, 35, 39, 119, 235, 215, 231, 226, 93, 23])
+        self.assertEqual(qr.format_bits(0), 0b101010000010010)
+        self.assertEqual(qr.format_bits(5), 0b100000011001110)
+        self.assertEqual(len(qr.encode("http://192.168.1.20:52345/AbCdEfGhIjK")), 29)  # version 3
+        with self.assertRaises(ValueError):
+            qr.encode("x" * 200)
+
     def test_bnf_pages(self):
         self.assertEqual(_bnf_pages("1 vol. (586 p.) ; 24 cm"), "586")
         self.assertEqual(_bnf_pages("1 vol. (non paginé [47] p.) : ill. en coul. ; 22 cm"), "47")

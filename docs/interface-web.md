@@ -18,6 +18,7 @@ La fenêtre est un Edge WebView2 (présent d'origine sur Windows 10 et 11), qui 
 
 - `web/` : interface React + Vite (reprise de la maquette Electron, sans Dexie). `npm run build` produit `web/dist`.
 - `booktek/web.py` : la fenêtre, un petit serveur local (bottle, fourni avec pywebview) pour `web/dist` et les jaquettes `covers/`, et la classe `Api` appelée depuis JavaScript (`window.pywebview.api.…`). Elle reprend la logique de `app.py`.
+- **Photo par téléphone** : `Api.phone_start()` ouvre un second serveur (`http.server`, sur toutes les cartes réseau, port libre) dont seule l'adresse `/<jeton aléatoire>` répond : en GET la page `PHONE_PAGE`, en POST la photo, redressée et réduite par Pillow puis transmise à l'interface par l'événement `phone_photo`. L'adresse est affichée en QR code par `booktek/qr.py`, un encodeur minimal écrit pour éviter une dépendance (mode octet, niveau M, versions 1 à 6, masque fixe). `phone_stop()` ferme le serveur à la fermeture de la fenêtre du QR code. Au premier lancement, le pare-feu Windows demande d'autoriser BookTek sur les réseaux privés.
 - `main.py` ouvre l'interface web ; `python main.py --tk` ouvre encore l'ancienne interface Tkinter.
 
 ## Commandes

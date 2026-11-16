@@ -25,12 +25,15 @@ import base64
 import csv
 import datetime as dt
 import functools
+import http.server
 import inspect
 import io
 import json
 import logging
 import logging.handlers
 import os
+import secrets
+import socket
 import sqlite3
 import sys
 import threading
@@ -41,7 +44,7 @@ import zipfile
 import bottle
 import webview
 
-from . import __version__, backup, bkc_import, lookup, updater
+from . import __version__, backup, bkc_import, lookup, qr, updater
 # shortcut: helpers repris de l'interface Tkinter (importe tkinter dans l'exe), les déplacer si app.py disparaît
 from .app import LABELS, LOAN_DAYS, data_dir, fmt_date, place
 from .db import FIELDS, Library
@@ -53,7 +56,7 @@ except ImportError:  # hors Windows
     winsound = None
 
 try:  # conversion des images choisies en JPEG ; sans Pillow, l'image est copiée telle quelle
-    from PIL import Image
+    from PIL import Image, ImageOps
 except ImportError:
     Image = None
 
@@ -123,6 +126,74 @@ def from_data_url(url):
     return base64.b64decode(url.split(",", 1)[1])
 
 
+PHONE_MAX = 30_000_000  # octets : une photo de téléphone en fait 2 à 10 Mo
+#: Page ouverte par le téléphone (couleurs fixes : elle est hors de l'application et de ses thèmes).
+PHONE_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>BookTek : photo</title><style>
+body{font:20px system-ui,sans-serif;margin:0;padding:24px;text-align:center;background:#f3f6fc;color:#1b2333}
+label{display:block;padding:28px;margin:24px 0;border-radius:16px;background:#2563eb;color:#fff;font-weight:600}
+input{display:none}img{max-width:100%;max-height:50vh;border-radius:8px}#msg{min-height:3em}
+</style></head><body><h1>BookTek</h1><p>Photographiez la couverture du livre, bien à plat.</p>
+<label>Prendre la photo<input type="file" accept="image/*" capture="environment" id="f"></label>
+<p id="msg"></p><img id="prev" alt="">
+<script>
+f.onchange = async () => {
+  const file = f.files[0]; if (!file) return
+  prev.src = URL.createObjectURL(file); msg.textContent = "Envoi en cours…"
+  try {
+    const r = await fetch(location.pathname, {method: "POST", body: file})
+    msg.textContent = r.ok ? "Photo envoyée à BookTek. Si elle ne convient pas, reprenez-en une autre."
+                           : "Erreur : " + await r.text()
+  } catch (e) { msg.textContent = "BookTek ne répond plus : scannez à nouveau le QR code affiché sur l'ordinateur." }
+  f.value = ""
+}
+</script></body></html>"""
+
+
+def _lan_ip():
+    """Adresse de l'ordinateur sur le réseau local (celle de la carte qui sort vers Internet)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("10.255.255.255", 1))  # UDP : aucun paquet envoyé, choisit seulement la carte réseau
+        return s.getsockname()[0]
+
+
+def phone_server(token, on_photo):
+    """Serveur web du réseau local pour la photo par téléphone, sur un port libre.
+
+    Seule l'adresse ``/<token>`` répond (page en GET, photo en POST) : le jeton aléatoire, transmis
+    par le QR code, empêche un autre appareil du réseau de deviner l'adresse. ``on_photo(octets)``
+    peut lever ``ValueError`` (image illisible) : le message est renvoyé au téléphone.
+    """
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _reply(self, code, text, ctype="text/plain; charset=utf-8"):
+            body = text.encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path != "/" + token:
+                return self._reply(404, "Page inconnue")
+            self._reply(200, PHONE_PAGE, "text/html; charset=utf-8")
+
+        def do_POST(self):
+            size = self.headers.get("Content-Length", "")
+            if self.path != "/" + token or not size.isdigit() or not 0 < int(size) <= PHONE_MAX:
+                return self._reply(400, "Envoi refusé")
+            try:
+                on_photo(self.rfile.read(int(size)))
+            except ValueError as exc:
+                return self._reply(400, str(exc))
+            self._reply(200, "ok")
+
+        def log_message(self, fmt, *args):
+            log.debug("Téléphone %s : %s", self.client_address[0], fmt % args)
+
+    return http.server.ThreadingHTTPServer(("0.0.0.0", 0), Handler)
+
+
 class Api:
     """Fonctions appelées par l'interface. Les attributs privés (``_``) ne sont pas exposés à JavaScript."""
 
@@ -134,6 +205,7 @@ class Api:
         self._pending = set()  # ISBN en cours de recherche en ligne (double scan)
         self._update_ready = None
         self._update_busy = False
+        self._phone = None  # serveur de la photo par téléphone, s'il est ouvert
         self._settings_path = os.path.join(os.path.dirname(db_path), "settings.json")
         self._log_path = os.path.join(os.path.dirname(db_path), "booktek.log")  # écrit si setup_log() a été appelé
         try:
@@ -300,6 +372,44 @@ class Api:
     def set_cover(self, book_id, cover_data):
         with self._lock:
             self._write_cover(book_id, from_data_url(cover_data))
+
+    def phone_start(self):
+        """Ouvre la page « photo par téléphone » sur le réseau local ; retourne ``{"url", "qr"}`` (QR code en SVG).
+
+        Chaque photo reçue arrive dans l'interface par un événement ``phone_photo`` ; on peut en
+        envoyer plusieurs, la dernière remplace la précédente.
+        """
+        self.phone_stop()
+        try:
+            ip = _lan_ip()
+        except OSError:
+            raise ValueError("Cet ordinateur n'est relié à aucun réseau : le téléphone ne pourra pas le joindre.") from None
+        token = secrets.token_urlsafe(8)
+        self._phone = phone_server(token, self._phone_photo)
+        threading.Thread(target=self._phone.serve_forever, daemon=True).start()
+        url = f"http://{ip}:{self._phone.server_port}/{token}"
+        return {"url": url, "qr": qr.svg(url)}
+
+    def phone_stop(self):
+        """Ferme la page « photo par téléphone »."""
+        if self._phone:
+            self._phone.shutdown()
+            self._phone.server_close()
+            self._phone = None
+
+    def _phone_photo(self, img):
+        """Photo reçue du téléphone : redressée, réduite (1200 px au plus), puis envoyée à l'interface."""
+        if Image:
+            try:
+                im = ImageOps.exif_transpose(Image.open(io.BytesIO(img))).convert("RGB")
+            except Exception:
+                raise ValueError("Image illisible : reprenez la photo.") from None
+            im.thumbnail((1200, 1200))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=90)
+            img = buf.getvalue()
+        log.info("Photo reçue du téléphone (%d Ko)", len(img) // 1000)
+        self._push("phone_photo", image=data_url(img))
 
     # ---- prêts et annuaire ---------------------------------------------------
     def lend(self, book_id, borrower, due_date):

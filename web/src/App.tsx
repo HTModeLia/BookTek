@@ -1,6 +1,6 @@
 // Interface BookTek : visuel de la maquette Electron, données et logique en Python (booktek/web.py).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench } from 'lucide-react'
+import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench, Smartphone } from 'lucide-react'
 
 type Book = { id: number; isbn: string | null; title: string; authors: string; publisher: string; year: string; genre: string; pages: string; location: string; shelf: string; box: string; depth: string; read_date: string; summary: string; notes: string; borrower: string | null; due_date: string | null; place: string; cover: string }
 type Loan = { id: number; book_id: number; borrower: string; loan_date: string; due_date: string | null; return_date: string | null; title: string }
@@ -80,6 +80,7 @@ export default function App() {
   const [form, setForm] = useState<Form | null>(null)
   const [picker, setPicker] = useState<{ images: string[]; title: string; pick: (img: string) => void } | null>(null)
   const [zoom, setZoom] = useState(170)
+  const [phone, setPhone] = useState<{ url: string; qr: string; image?: string } | null>(null)
   const [lendBook, setLendBook] = useState<Book | null>(null)
   const [lendWho, setLendWho] = useState('')
   const [lendDue, setLendDue] = useState('')
@@ -114,6 +115,10 @@ export default function App() {
     if ((window as any).pywebview?.api) start(); else window.addEventListener('pywebviewready', start, { once: true })
     ;(window as any).onPush = (m: any) => {
       if (m.kind === 'status') { setStatus(m.text, m.level); if (m.refresh) reload(); if ('busy' in m) setBgBusy(m.busy) }
+      if (m.kind === 'phone_photo') {
+        setPhone(p => p && { ...p, image: m.image })
+        setForm(x => x && { ...x, cover: m.image, coverData: m.image })
+      }
       if (m.kind === 'update') { setUpdate({ version: m.version, notes: m.notes }); setStatus(`Mise à jour ${m.version} prête : elle sera installée au prochain démarrage, ou cliquez sur « Mettre à jour ».`) }
     }
     // F2 : retour au champ ISBN ; un chiffre tapé hors d'un champ (douchette) y est redirigé
@@ -517,11 +522,23 @@ export default function App() {
           <div className="bigcover">{form.cover ? <img src={form.cover} /> : <BookOpen size={50} />}</div>
           <label className="sidebutton formbutton"><ImageIcon size={15} />Changer la jaquette…<input type="file" accept="image/*" onChange={async e => { const f = e.target.files?.[0]; if (f) { const img = await readImage(f); setForm(x => x && { ...x, cover: img, coverData: img }) } }} /></label>
           <button type="button" disabled={busy} onClick={() => searchCovers(form.data.isbn || '', form.data.title || '', form.data.authors || '', img => setForm(x => x && { ...x, cover: img, coverData: img }))}><Search size={15} />Rechercher une jaquette…</button>
+          <button type="button" onClick={async () => { const p = await call(() => api().phone_start()); if (p) setPhone(p) }}><Smartphone size={15} />Photo avec le téléphone…</button>
           <button type="button" disabled={busy} onClick={formRefreshInfo}><RefreshCw size={15} />Actualiser les informations</button>
         </div>
       </div>
       <div className="modalactions"><button type="button" onClick={() => { setForm(null); refocus() }}>Annuler</button><button className="primary" type="submit">Enregistrer</button></div>
     </form></div>}
+
+    {phone && <div className="modalback"><div className="modal compact phone">
+      <div className="modalhead"><h2>Photo avec le téléphone</h2><button type="button" onClick={() => { api().phone_stop(); setPhone(null) }}><X /></button></div>
+      <p className="muted">Le téléphone doit être sur le même réseau Wi-Fi que l'ordinateur. Visez ce code avec l'appareil photo du téléphone, ouvrez le lien proposé, puis photographiez la couverture. Vous pouvez reprendre la photo autant de fois que nécessaire.</p>
+      <div className="phoneqr">
+        <img src={'data:image/svg+xml;utf8,' + encodeURIComponent(phone.qr)} alt={phone.url} />
+        {phone.image ? <img src={phone.image} alt="Photo reçue" /> : <div className="muted">En attente de la photo…</div>}
+      </div>
+      <p className="muted"><small>{phone.url}</small></p>
+      <div className="modalactions"><button type="button" className="primary" onClick={() => { api().phone_stop(); setPhone(null) }}>{phone.image ? 'Terminé' : 'Fermer'}</button></div>
+    </div></div>}
 
     {picker && <div className="modalback picker"><div className="modal">
       <div className="modalhead"><h2>Choisir une jaquette</h2><button type="button" onClick={() => setPicker(null)}><X /></button></div>
