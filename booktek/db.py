@@ -184,10 +184,14 @@ class Library:
         ).fetchall()
 
     def books_missing_info(self):
-        """Livres ayant un ISBN mais sans auteur, éditeur, nombre de pages, résumé ou genre (à compléter en ligne)."""
+        """Livres ayant un ISBN mais sans auteur, éditeur ou nombre de pages (à compléter en ligne).
+
+        Le résumé et le genre ne comptent pas : ils manquent dans tous les catalogues pour la plupart
+        des éditions anciennes, qui seraient sinon recherchées à nouveau à chaque complément.
+        """
         return self.con.execute(
             "SELECT id, isbn FROM books WHERE isbn IS NOT NULL"
-            " AND (authors = '' OR publisher = '' OR pages = '' OR summary = '' OR genre = '')"
+            " AND (authors = '' OR publisher = '' OR pages = '')"
         ).fetchall()
 
     def fill_missing(self, book_id, info):

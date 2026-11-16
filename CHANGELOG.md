@@ -11,6 +11,7 @@ Les sections de ce fichier servent de notes de version : `tools/release.py` publ
 ### Modifications
 - La **liste des livres** est maintenant la partie large de l'écran, et la **fiche du livre** la partie étroite à droite.
 - En affichage **Miniatures**, les vignettes sont plus petites : il y en a davantage par ligne, selon la largeur de la fenêtre.
+- **Compléter les fiches via Internet** ne recherche plus les livres auxquels il ne manque que le résumé ou le genre : les éditions anciennes n'en ont dans aucun catalogue, et elles étaient recherchées pour rien à chaque fois.
 
 ## [1.16.0] - 2026-11-13
 
