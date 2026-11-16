@@ -216,7 +216,7 @@ def fetch(isbn):
         except Exception as exc:
             log.debug("%s %s : erreur %s", name, isbn, exc)
             return {}
-        log.debug("%s %s : %s", name, isbn, ", ".join(sorted(info)) or "rien")
+        log.debug("%s %s : %s", name, isbn, ", ".join(sorted(k for k, v in info.items() if v)) or "rien")
         return info
 
     with ThreadPoolExecutor(len(sources)) as pool:
@@ -231,8 +231,8 @@ def fetch(isbn):
         try:
             result["cover"] = _get_bytes(url)  # ?default=false : erreur 404 plutôt qu'une image vide
             break
-        except Exception:
-            continue
+        except Exception as exc:
+            log.debug("Jaquette %s : erreur %s", url, exc)
     return result if result.get("title") else None
 
 
