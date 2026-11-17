@@ -1,5 +1,6 @@
 // Interface BookTek : visuel de la maquette Electron, données et logique en Python (booktek/web.py).
 import { useEffect, useMemo, useRef, useState } from 'react'
+import changelog from '../../CHANGELOG.md?raw'  // intégré à la construction : l'historique de la version installée
 import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench, Smartphone } from 'lucide-react'
 
 type Book = { id: number; isbn: string | null; title: string; authors: string; publisher: string; year: string; genre: string; pages: string; location: string; shelf: string; box: string; depth: string; read_date: string; summary: string; notes: string; borrower: string | null; due_date: string | null; place: string; cover: string }
@@ -39,6 +40,19 @@ const fmt = (iso?: string | null) => iso ? iso.split('-').reverse().join('/') : 
 const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000)
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso) + n * 86400000).toISOString().slice(0, 10)
 const errText = (e: any) => String(e?.message ?? e)
+
+/** Gras et `code` d'une ligne de Markdown. */
+const inline = (text: string) => text.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((p, i) =>
+  p.startsWith('**') ? <b key={i}>{p.slice(2, -2)}</b> : p.startsWith('`') ? <code key={i}>{p.slice(1, -1)}</code> : p)
+/** Rendu du CHANGELOG à partir de la première version (le paragraphe d'introduction est pour les développeurs). */
+// shortcut: Markdown limité aux titres ##/###, puces et gras/code du CHANGELOG ; une bibliothèque si le format s'enrichit
+function Changelog() {
+  const lines = changelog.slice(changelog.indexOf('\n## ')).split(/\r?\n/).filter(l => l.trim())
+  return <div className="changelog">{lines.map((l, i) =>
+    l.startsWith('## ') ? <h3 key={i}>{l.slice(3).replace(/^\[(.+?)\] - (\S+)$/, (_, v, d) => `Version ${v} du ${isoToFr(d)}`)}</h3>
+      : l.startsWith('### ') ? <h4 key={i}>{l.slice(4)}</h4>
+        : <p key={i} className={l.startsWith('- ') ? 'item' : ''}>{inline(l.replace(/^- /, ''))}</p>)}</div>
+}
 
 /** Clé de tri « naturelle » (voir sort_key de app.py) : nombres en valeur, dates JJ/MM/AAAA dans l'ordre, auteur par nom de famille. */
 function sortKey(text: string, col = ''): (string | number)[] {
@@ -512,6 +526,8 @@ export default function App() {
         <p className="muted">Base de données : {data?.dbPath}</p>
         <h2>Sources des données</h2><p className="muted">Cliquez sur une ligne pour ouvrir la page du service.</p>
         {data?.sources.map(([name, use, url]) => <div className="backup-row source-row" key={url} onClick={() => api().open_url(url)}><div><b>{name}</b><small>{use} · {url}</small></div></div>)}
+        <h2>Historique des versions</h2>
+        <Changelog />
       </section>}
     </main>
 

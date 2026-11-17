@@ -65,7 +65,7 @@ Dans la fiche d'un livre, le bouton principal est présélectionné : appuyez su
 ### Un livre à la fois (mode Automatique)
 
 1. Scannez le livre.
-2. BookTek interroge en même temps trois catalogues en ligne (BnF, Google Books, Open Library) et combine leurs réponses pour remplir le plus de champs possible : titre, auteurs, éditeur, année, genre, nombre de pages, résumé et couverture. Pour un livre français, la BnF est prioritaire ; le résumé retenu est le plus complet. La liste des services utilisés, avec leurs adresses, est dans **Aide > À propos de BookTek** (double-clic sur une ligne pour ouvrir la page).
+2. BookTek interroge en même temps trois catalogues en ligne (BnF, Google Books, Open Library) et combine leurs réponses pour remplir le plus de champs possible : titre, auteurs, éditeur, année, genre, nombre de pages, résumé et couverture. Pour un livre français, la BnF est prioritaire ; le résumé retenu est le plus complet. La liste des services utilisés, avec leurs adresses, est dans **Aide > À propos de BookTek** (double-clic sur une ligne pour ouvrir la page). Cette page présente aussi l'**historique des versions** : les nouveautés de chaque version, de la plus récente à la plus ancienne.
 3. La fiche s'ouvre pré-remplie. Complétez si besoin l'[emplacement](#ranger-ses-livres--le-code-demplacement) et les **notes**, puis cliquez sur **Enregistrer** ou appuyez sur Entrée.
 
 Si le livre est introuvable en ligne, la fiche s'ouvre avec seulement l'ISBN : saisissez au moins le titre.
