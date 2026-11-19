@@ -21,6 +21,7 @@ donc directement comme des chaînes (calcul des retards en SQL).
 """
 import datetime as dt
 import sqlite3
+import uuid
 
 #: Champs éditables d'un livre, dans l'ordre d'affichage du formulaire.
 #: Rangement : location (meuble/pièce) › shelf (étage) › box › depth (rangée, 1 = devant).
@@ -75,6 +76,8 @@ MIGRATIONS = [
     "ALTER TABLE books ADD COLUMN genre TEXT DEFAULT ''",
     # 4 : date du dernier complément en ligne (voir Library.checked_recently)
     "ALTER TABLE books ADD COLUMN checked_at TEXT DEFAULT ''",
+    # 5 : réglages propres à la base, dont l'identifiant d'installation (voir Library.install_id)
+    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
 ]
 #: Jours pendant lesquels un livre déjà cherché en ligne n'est pas recherché à nouveau par le complément.
 CHECK_DAYS = 30
@@ -109,6 +112,13 @@ class Library:
         for i, script in enumerate(MIGRATIONS[version:], version + 1):
             # executescript valide la transaction en cours : migration + version dans le même script
             self.con.executescript(f"BEGIN; {script}; PRAGMA user_version = {i}; COMMIT;")
+        with self.con:  # créé une seule fois, puis conservé avec la base
+            self.con.execute("INSERT OR IGNORE INTO meta VALUES ('install_id', ?)", (str(uuid.uuid4()),))
+
+    @property
+    def install_id(self):
+        """Identifiant unique (UUID) de cette installation, pour une future base centralisée sur un serveur."""
+        return self.con.execute("SELECT value FROM meta WHERE key = 'install_id'").fetchone()[0]
 
     # ---- livres -------------------------------------------------------
     def book(self, book_id):

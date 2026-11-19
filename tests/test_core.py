@@ -238,8 +238,12 @@ class V12Test(unittest.TestCase):
         self.assertEqual(lib.con.execute("PRAGMA user_version").fetchone()[0], len(dbmod.MIGRATIONS))
         self.assertEqual((lib.book(1)["shelf"], lib.book(1)["summary"]), ("", ""))
         self.assertEqual(lib.borrowers(), ["Marie"])
+        install_id = lib.install_id
+        self.assertEqual(len(install_id), 36)
         lib.con.close()
-        Library(path).con.close()  # réouverture : pas de nouvelle migration
+        lib = Library(path)  # réouverture : pas de nouvelle migration, même identifiant
+        self.assertEqual(lib.install_id, install_id)
+        lib.con.close()
 
     def test_directory_rename_delete(self):
         lib = Library(":memory:")
