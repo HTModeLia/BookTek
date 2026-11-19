@@ -8,7 +8,7 @@ BookTek est un logiciel Windows de gestion de bibliothèque personnelle : on sca
 
 - **Utilisateur final** : particulier, notamment une personne de 65 ans. Interface simple, textes en français, fort contraste, rien de technique à l'écran.
 - **Mainteneur** : le propriétaire du dépôt. Il échange en français, demande des évolutions courtes (« possibilité de… ») et dit « publie » pour sortir une version.
-- **État** : version **1.11.0** (11/11/2026). L'historique complet est dans [CHANGELOG.md](CHANGELOG.md).
+- **État** : version **1.17.0**, branche unique `main` (les anciennes branches sont archivées sous des tags `archive/...`). L'historique complet est dans [CHANGELOG.md](CHANGELOG.md).
 
 ## Où trouver quoi
 
@@ -18,7 +18,7 @@ BookTek est un logiciel Windows de gestion de bibliothèque personnelle : on sca
 | Modules, base, threads, interface, thèmes, pièges Tkinter | [docs/architecture.md](docs/architecture.md) |
 | Mise à jour automatique (updater, SHA-256, remplacement de l'exe) | [docs/mises-a-jour.md](docs/mises-a-jour.md) |
 | Sortir une version | [docs/publier-une-version.md](docs/publier-une-version.md) |
-| Interface web (branche `webview`) | [docs/interface-web.md](docs/interface-web.md) |
+| Interface web | [docs/interface-web.md](docs/interface-web.md) |
 | Détail de chaque fonction | les docstrings du code (en français) |
 
 Code : `booktek/app.py` (interface, environ 1400 lignes), `db.py` (SQLite + migrations), `lookup.py` (BnF, Google Books, Open Library), `isbn.py`, `bkc_import.py` (Book Collector), `updater.py`. Tests : `tests/`. Release : `tools/release.py`.

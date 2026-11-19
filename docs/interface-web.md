@@ -1,6 +1,6 @@
-# Interface web (branche `webview`)
+# Interface web
 
-Proposition : garder toutes les fonctions de BookTek (Python) avec le visuel de la maquette Electron (branche `electron`).
+Proposition : garder toutes les fonctions de BookTek (Python) avec le visuel de la maquette Electron (archivée sous le tag `archive/electron`).
 
 ## Technologie retenue : Python + pywebview (WebView2)
 
