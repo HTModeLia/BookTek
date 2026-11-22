@@ -33,9 +33,12 @@ import logging
 import logging.handlers
 import os
 import secrets
+import shutil
 import socket
 import sqlite3
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -44,7 +47,7 @@ import zipfile
 import bottle
 import webview
 
-from . import __version__, backup, bkc_import, lookup, qr, updater
+from . import __version__, backup, barcode, bkc_import, lookup, qr, updater
 # shortcut: helpers repris de l'interface Tkinter (importe tkinter dans l'exe), les déplacer si app.py disparaît
 from .app import LABELS, LOAN_DAYS, data_dir, fmt_date, place
 from .db import FIELDS, Library
@@ -56,7 +59,7 @@ except ImportError:  # hors Windows
     winsound = None
 
 try:  # conversion des images choisies en JPEG ; sans Pillow, l'image est copiée telle quelle
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageChops, ImageFilter, ImageOps
 except ImportError:
     Image = None
 
@@ -128,13 +131,15 @@ def from_data_url(url):
 
 PHONE_MAX = 30_000_000  # octets : une photo de téléphone en fait 2 à 10 Mo
 #: Page ouverte par le téléphone (couleurs fixes : elle est hors de l'application et de ses thèmes).
+#: ``@INTRO@`` et ``@BUTTON@`` sont remplacés selon l'usage (:data:`PHONE_TEXTS`) ; le message affiché
+#: après l'envoi est la réponse du serveur.
 PHONE_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>BookTek : photo</title><style>
 body{font:20px system-ui,sans-serif;margin:0;padding:24px;text-align:center;background:#f3f6fc;color:#1b2333}
 label{display:block;padding:28px;margin:24px 0;border-radius:16px;background:#2563eb;color:#fff;font-weight:600}
 input{display:none}img{max-width:100%;max-height:50vh;border-radius:8px}#msg{min-height:3em}
-</style></head><body><h1>BookTek</h1><p>Photographiez la couverture du livre, bien à plat.</p>
-<label>Prendre la photo<input type="file" accept="image/*" capture="environment" id="f"></label>
+</style></head><body><h1>BookTek</h1><p>@INTRO@</p>
+<label>@BUTTON@<input type="file" accept="image/*" capture="environment" id="f"></label>
 <p id="msg"></p><img id="prev" alt="">
 <script>
 f.onchange = async () => {
@@ -142,12 +147,116 @@ f.onchange = async () => {
   prev.src = URL.createObjectURL(file); msg.textContent = "Envoi en cours…"
   try {
     const r = await fetch(location.pathname, {method: "POST", body: file})
-    msg.textContent = r.ok ? "Photo envoyée à BookTek. Si elle ne convient pas, reprenez-en une autre."
-                           : "Erreur : " + await r.text()
+    const t = await r.text()
+    msg.textContent = r.ok ? t : "Erreur : " + t
   } catch (e) { msg.textContent = "BookTek ne répond plus : scannez à nouveau le QR code affiché sur l'ordinateur." }
   f.value = ""
 }
 </script></body></html>"""
+PHONE_TEXTS = {
+    "photo": ("Photographiez la couverture du livre, bien à plat.", "Prendre la photo"),
+    "isbn": ("Photographiez le code-barres du livre (au dos), de près, bien en face et net. "
+             "Un livre après l'autre : chaque ISBN lu arrive dans BookTek.", "Photographier le code-barres"),
+}
+
+
+def phone_page(kind):
+    """Page du téléphone pour ``kind`` (``"photo"`` : jaquette, ``"isbn"`` : code-barres)."""
+    intro, button = PHONE_TEXTS[kind]
+    return PHONE_PAGE.replace("@INTRO@", intro).replace("@BUTTON@", button)
+
+
+def adjust_image(img, action, box=None):
+    """Retouche une jaquette (octets) et retourne le JPEG obtenu.
+
+    ``action`` : ``"left"`` / ``"right"`` (quart de tour), ``"auto"`` (retire les bords unis autour
+    du livre), ``"enhance"`` (contraste automatique) ou ``"crop"`` avec ``box`` = (gauche, haut,
+    droite, bas) en fractions de l'image (0 à 1). Lève ``ValueError`` avec un message pour l'utilisateur.
+    """
+    try:
+        im = Image.open(io.BytesIO(img)).convert("RGB")
+    except Exception:
+        raise ValueError("Image illisible.") from None
+    if action in ("left", "right"):
+        im = im.rotate(90 if action == "left" else -90, expand=True)
+    elif action == "enhance":
+        im = ImageOps.autocontrast(im, cutoff=1)
+    elif action == "crop":
+        x0, y0, x1, y1 = (min(1.0, max(0.0, float(v))) for v in box)
+        if x1 - x0 < 0.05 or y1 - y0 < 0.05:
+            raise ValueError("Zone trop petite : tracez un cadre autour de la couverture.")
+        im = im.crop((round(x0 * im.width), round(y0 * im.height), round(x1 * im.width), round(y1 * im.height)))
+    elif action == "auto":
+        # shortcut: fond supposé uni (couleur médiane du pourtour), sans redresser la perspective ;
+        # suffisant pour un livre posé sur une table ou scanné, sinon recadrer à la main.
+        small = im.copy()
+        small.thumbnail((300, 300))
+        small = small.filter(ImageFilter.MedianFilter(5))
+        w, h = small.size
+        edge = [small.getpixel((x, y)) for x in range(w) for y in (0, h - 1)] + \
+               [small.getpixel((x, y)) for y in range(h) for x in (0, w - 1)]
+        bg = tuple(sorted(c[k] for c in edge)[len(edge) // 2] for k in range(3))
+        diff = ImageChops.difference(small, Image.new("RGB", small.size, bg)).convert("L")
+        bbox = diff.point(lambda v: 255 if v > 40 else 0).filter(ImageFilter.MinFilter(3)).getbbox()
+        if not bbox or (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) > 0.95 * w * h:
+            raise ValueError("Pas de bord à retirer : utilisez « Recadrer » pour tracer le cadre à la main.")
+        sx, sy = im.width / w, im.height / h
+        im = im.crop((int(bbox[0] * sx), int(bbox[1] * sy), int(bbox[2] * sx), int(bbox[3] * sy)))
+    else:
+        raise ValueError(f"Retouche inconnue : {action}")
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
+#: Numérisation par WIA (le service de numérisation de Windows) : fenêtre standard de Windows pour
+#: choisir le scanner (imprimante multifonction en USB ou en Wi-Fi), prévisualiser et cadrer.
+#: Codes de sortie : 0 image enregistrée, 2 aucun scanner, 3 WIA absent, 4 annulé.
+WIA_SCRIPT = r"""
+$ErrorActionPreference = 'Stop'
+try { $dlg = New-Object -ComObject WIA.CommonDialog } catch { exit 3 }
+try {
+  $img = $dlg.ShowAcquireImage(1, 1, 131072, '{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}', $false, $true, $false)
+} catch {
+  $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }
+  if ($e.HResult -eq -2145320939) { exit 2 }  # 0x80210015 : aucun scanner disponible
+  [Console]::Error.WriteLine($e.Message); exit 1
+}
+if ($img -eq $null) { exit 4 }
+$img.SaveFile('@PATH@')
+"""
+
+
+def wia_scan():
+    """Ouvre la fenêtre de numérisation de Windows ; retourne les octets de l'image, ou None si annulé.
+
+    Passe par PowerShell (objet COM ``WIA.CommonDialog``) : aucune dépendance Python. Lève
+    ``ValueError`` avec un message pour l'utilisateur si aucun scanner n'est trouvé.
+    """
+    folder = tempfile.mkdtemp()
+    path = os.path.join(folder, "scan.jpg")
+    script = WIA_SCRIPT.replace("@PATH@", path.replace("'", "''"))
+    try:
+        res = subprocess.run(["powershell", "-NoProfile", "-STA", "-EncodedCommand",
+                              base64.b64encode(script.encode("utf-16-le")).decode()],
+                             capture_output=True, text=True, encoding="oem", errors="replace", timeout=900,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if res.returncode == 4:
+            return None
+        if res.returncode == 2:
+            raise ValueError("Aucun scanner trouvé. Allumez l'imprimante, puis vérifiez qu'elle apparaît dans "
+                             "Windows : Paramètres › Bluetooth et appareils › Imprimantes et scanners.")
+        if res.returncode == 3:
+            raise ValueError("La numérisation de Windows (WIA) n'est pas disponible sur cet ordinateur.")
+        if res.returncode or not os.path.exists(path):
+            err = (res.stderr or "").strip().splitlines() or ["erreur inconnue"]
+            raise ValueError("Le scanner n'a pas répondu : " + err[-1])
+        with open(path, "rb") as f:
+            return f.read()
+    except (OSError, subprocess.TimeoutExpired):
+        raise ValueError("Impossible de lancer la numérisation de Windows.") from None
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _lan_ip():
@@ -157,12 +266,13 @@ def _lan_ip():
         return s.getsockname()[0]
 
 
-def phone_server(token, on_photo):
+def phone_server(token, on_photo, page=None):
     """Serveur web du réseau local pour la photo par téléphone, sur un port libre.
 
     Seule l'adresse ``/<token>`` répond (page en GET, photo en POST) : le jeton aléatoire, transmis
-    par le QR code, empêche un autre appareil du réseau de deviner l'adresse. ``on_photo(octets)``
-    peut lever ``ValueError`` (image illisible) : le message est renvoyé au téléphone.
+    par le QR code, empêche un autre appareil du réseau de deviner l'adresse. ``page`` : la page
+    servie (photo de couverture par défaut). ``on_photo(octets)`` retourne le message à afficher sur
+    le téléphone, ou lève ``ValueError`` (image illisible) : ce message-là est renvoyé en erreur.
     """
     class Handler(http.server.BaseHTTPRequestHandler):
         def _reply(self, code, text, ctype="text/plain; charset=utf-8"):
@@ -176,17 +286,17 @@ def phone_server(token, on_photo):
         def do_GET(self):
             if self.path != "/" + token:
                 return self._reply(404, "Page inconnue")
-            self._reply(200, PHONE_PAGE, "text/html; charset=utf-8")
+            self._reply(200, page or phone_page("photo"), "text/html; charset=utf-8")
 
         def do_POST(self):
             size = self.headers.get("Content-Length", "")
             if self.path != "/" + token or not size.isdigit() or not 0 < int(size) <= PHONE_MAX:
                 return self._reply(400, "Envoi refusé")
             try:
-                on_photo(self.rfile.read(int(size)))
+                text = on_photo(self.rfile.read(int(size)))
             except ValueError as exc:
                 return self._reply(400, str(exc))
-            self._reply(200, "ok")
+            self._reply(200, text or "ok")
 
         def log_message(self, fmt, *args):
             log.debug("Téléphone %s : %s", self.client_address[0], fmt % args)
@@ -373,11 +483,12 @@ class Api:
         with self._lock:
             self._write_cover(book_id, from_data_url(cover_data))
 
-    def phone_start(self):
-        """Ouvre la page « photo par téléphone » sur le réseau local ; retourne ``{"url", "qr"}`` (QR code en SVG).
+    def phone_start(self, kind="photo"):
+        """Ouvre la page du téléphone sur le réseau local ; retourne ``{"url", "qr"}`` (QR code en SVG).
 
-        Chaque photo reçue arrive dans l'interface par un événement ``phone_photo`` ; on peut en
-        envoyer plusieurs, la dernière remplace la précédente.
+        ``kind="photo"`` : chaque photo reçue arrive dans l'interface par un événement ``phone_photo``,
+        la dernière remplace la précédente. ``kind="isbn"`` : le téléphone sert de scanner, chaque
+        code-barres lu arrive par un événement ``phone_isbn`` ; la page reste ouverte d'un livre à l'autre.
         """
         self.phone_stop()
         try:
@@ -385,7 +496,8 @@ class Api:
         except OSError:
             raise ValueError("Cet ordinateur n'est relié à aucun réseau : le téléphone ne pourra pas le joindre.") from None
         token = secrets.token_urlsafe(8)
-        self._phone = phone_server(token, self._phone_photo)
+        handler = self._phone_isbn if kind == "isbn" else self._phone_photo
+        self._phone = phone_server(token, handler, phone_page(kind))
         threading.Thread(target=self._phone.serve_forever, daemon=True).start()
         url = f"http://{ip}:{self._phone.server_port}/{token}"
         return {"url": url, "qr": qr.svg(url)}
@@ -410,6 +522,56 @@ class Api:
             img = buf.getvalue()
         log.info("Photo reçue du téléphone (%d Ko)", len(img) // 1000)
         self._push("phone_photo", image=data_url(img))
+        return "Photo envoyée à BookTek. Si elle ne convient pas, reprenez-en une autre."
+
+    def _phone_isbn(self, img):
+        """Photo d'un code-barres reçue du téléphone : l'ISBN lu est envoyé à l'interface, qui le traite comme un scan."""
+        if not Image:
+            raise ValueError("Lecture des codes-barres impossible sur cet ordinateur.")
+        try:
+            code = barcode.read(img)
+        except Exception:
+            raise ValueError("Image illisible : reprenez la photo.") from None
+        if not code:
+            raise ValueError("Code-barres non lu : rapprochez le téléphone, bien en face, avec assez de lumière.")
+        isbn = normalize(code)
+        if not isbn:
+            raise ValueError(f"Ce code-barres ({code}) n'est pas un ISBN.")
+        log.info("ISBN lu par le téléphone : %s", isbn)
+        self._push("phone_isbn", isbn=isbn)
+        return f"ISBN {isbn} envoyé à BookTek. Livre suivant : reprenez une photo."
+
+    # ---- retouche et numérisation des jaquettes --------------------------------
+    def adjust_cover(self, src, action, box=None):
+        """Retouche la jaquette affichée dans la fiche (voir :func:`adjust_image`) ; retourne la nouvelle en ``data:``.
+
+        ``src`` est une adresse ``data:`` (image pas encore enregistrée) ou ``covers/<id>.jpg?v=…``.
+        """
+        if not Image:
+            raise ValueError("Retouche impossible sur cet ordinateur.")
+        if src.startswith("data:"):
+            img = from_data_url(src)
+        else:
+            name = src.split("?")[0].rsplit("/", 1)[-1]
+            if not name.removesuffix(".jpg").isdigit():
+                raise ValueError("Jaquette introuvable.")
+            with open(self._cover_path(int(name.removesuffix(".jpg"))), "rb") as f:
+                img = f.read()
+        return data_url(adjust_image(img, action, box))
+
+    def scan_cover(self):
+        """Numérise la couverture avec le scanner (imprimante multifonction) ; retourne l'image en ``data:`` ou None si annulé."""
+        img = wia_scan()
+        if img is None:
+            return None
+        if Image:  # un scan en haute résolution pèse lourd : réduit comme les photos du téléphone
+            im = Image.open(io.BytesIO(img)).convert("RGB")
+            im.thumbnail((1200, 1200))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=90)
+            img = buf.getvalue()
+        log.info("Couverture numérisée (%d Ko)", len(img) // 1000)
+        return data_url(img)
 
     # ---- prêts et annuaire ---------------------------------------------------
     def lend(self, book_id, borrower, due_date):

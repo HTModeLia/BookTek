@@ -21,6 +21,7 @@ booktek/
 ├── lookup.py           recherche des fiches en ligne
 ├── bkc_import.py       lecture des fichiers Book Collector
 ├── backup.py           sauvegardes ZIP (base + jaquettes), rotation, restauration
+├── barcode.py          lecture d'un code-barres EAN-13 (ISBN) sur une photo, Pillow seul
 ├── icon.ico            icône (exe et fenêtres), générée par tools/make_icon.py
 └── updater.py          mise à jour automatique
 tests/                  tests unitaires (unittest)

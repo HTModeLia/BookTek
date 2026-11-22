@@ -1,7 +1,7 @@
 // Interface BookTek : visuel de la maquette Electron, données et logique en Python (booktek/web.py).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import changelog from '../../CHANGELOG.md?raw'  // intégré à la construction : l'historique de la version installée
-import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench, Smartphone } from 'lucide-react'
+import { BookOpen, Search, Plus, Grid3X3, List, Handshake, BarChart3, Library, Barcode, Pencil, Trash2, RotateCcw, Download, Upload, X, Users, Mail, Phone, CalendarDays, UserRound, Info, RefreshCw, ImageIcon, Moon, Type, FileText, Globe, ArrowUpCircle, ShieldCheck, Clock, Wrench, Smartphone, Printer, RotateCw, Crop, Sparkles, ScanLine, Check } from 'lucide-react'
 
 type Book = { id: number; isbn: string | null; title: string; authors: string; publisher: string; year: string; genre: string; pages: string; location: string; shelf: string; box: string; depth: string; read_date: string; summary: string; notes: string; borrower: string | null; due_date: string | null; place: string; cover: string }
 type Loan = { id: number; book_id: number; borrower: string; loan_date: string; due_date: string | null; return_date: string | null; title: string }
@@ -99,7 +99,11 @@ export default function App() {
   const [form, setForm] = useState<Form | null>(null)
   const [picker, setPicker] = useState<{ images: string[]; title: string; pick: (img: string) => void } | null>(null)
   const [zoom, setZoom] = useState(170)
-  const [phone, setPhone] = useState<{ url: string; qr: string; image?: string } | null>(null)
+  const [phone, setPhone] = useState<{ url: string; qr: string; kind: 'photo' | 'isbn'; image?: string } | null>(null)
+  const [phoneScan, setPhoneScan] = useState(false)  // téléphone utilisé comme scanner, fenêtre du QR code refermée
+  const [crop, setCrop] = useState<{ on: boolean; box: number[] | null }>({ on: false, box: null })  // recadrage à la main
+  const cropStart = useRef<number[] | null>(null)
+  useEffect(() => { if (!form) setCrop({ on: false, box: null }) }, [form])
   const [lendBook, setLendBook] = useState<Book | null>(null)
   const [lendWho, setLendWho] = useState('')
   const [lendDue, setLendDue] = useState('')
@@ -137,6 +141,11 @@ export default function App() {
       if (m.kind === 'phone_photo') {
         setPhone(p => p && { ...p, image: m.image })
         setForm(x => x && { ...x, cover: m.image, coverData: m.image })
+      }
+      if (m.kind === 'phone_isbn') {
+        setPhone(null); setPhoneScan(true)  // le serveur reste ouvert pour les livres suivants
+        if (document.querySelector('.modalback:not(.phoneback)')) setStatus(`ISBN ${m.isbn} reçu du téléphone : fermez d'abord la fenêtre ouverte, puis reprenez la photo.`, 'warn')
+        else onScanRef.current(m.isbn)
       }
       if (m.kind === 'update') { setUpdate({ version: m.version, notes: m.notes }); setStatus(`Mise à jour ${m.version} prête : elle sera installée au prochain démarrage, ou cliquez sur « Mettre à jour ».`) }
     }
@@ -210,9 +219,10 @@ export default function App() {
     setTimeout(() => document.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }), 50)
   }
 
-  async function onScan() {
-    const raw = scan.trim()
-    setScan('')
+  /** Traite l'ISBN du champ de scan, ou ``code`` (ISBN lu par le téléphone). */
+  async function onScan(code?: string) {
+    const raw = (code ?? scan).trim()
+    if (code === undefined) setScan('')
     if (!raw) return
     const res = await call(() => api().scan(raw, mode))
     if (!res) return
@@ -221,6 +231,39 @@ export default function App() {
     if (res.select) show(res.select, d)
     if (res.open) setFocusAction(n => n + 1)
     if (res.form) setForm({ id: null, data: formOf(res.form), cover: res.form.coverData || '', coverData: res.form.coverData })
+  }
+  const onScanRef = useRef(onScan)
+  onScanRef.current = onScan  // onPush est créé une seule fois : il passe par la référence pour lire le mode de scan actuel
+  async function phoneOpen(kind: 'photo' | 'isbn') {
+    const p = await call(() => api().phone_start(kind))
+    setPhoneScan(false)  // un seul serveur à la fois : l'ancien est fermé
+    if (p) setPhone({ ...p, kind })
+  }
+  function phoneClose() { api().phone_stop(); setPhone(null); setPhoneScan(false) }
+  /** Retouche de la jaquette de la fiche : rotation, recadrage auto ou à la main, contraste. */
+  async function adjust(action: string, box: number[] | null = null) {
+    if (!form?.cover) return
+    const img = await call(() => api().adjust_cover(form.cover, action, box))
+    setCrop({ on: false, box: null })
+    if (img) setForm(x => x && { ...x, cover: img, coverData: img })
+  }
+  async function scanCover() {
+    setStatus('Numérisation : suivez la fenêtre de Windows (elle peut s’ouvrir derrière BookTek).')
+    const img = await call(() => api().scan_cover())
+    if (!img) return
+    setForm(x => x && { ...x, cover: img, coverData: img })
+    setStatus('Couverture numérisée : ajustez-la si besoin, puis enregistrez.', 'ok')
+  }
+  /** Position du pointeur sur l'image, en fractions (0 à 1). */
+  function cropPoint(e: React.PointerEvent<HTMLElement>) {
+    const r = e.currentTarget.getBoundingClientRect()
+    const f = (v: number) => Math.min(1, Math.max(0, v))
+    return [f((e.clientX - r.left) / r.width), f((e.clientY - r.top) / r.height)]
+  }
+  function cropMove(e: React.PointerEvent<HTMLElement>) {
+    if (!cropStart.current) return
+    const [ax, ay] = cropStart.current, [bx, by] = cropPoint(e)
+    setCrop({ on: true, box: [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)] })
   }
 
   async function saveForm(e: React.FormEvent) {
@@ -357,7 +400,10 @@ export default function App() {
           <select value={mode} onChange={e => { setMode(e.target.value as typeof mode); refocus() }} title="Mode de scan">
             <option value="auto">Automatique</option><option value="add">Ajout rapide</option><option value="return">Retour rapide</option>
           </select>
-          <button onClick={onScan}>OK</button>
+          <button onClick={() => onScan()}>OK</button>
+          {phoneScan
+            ? <button className="phonechip" onClick={phoneClose} title="Ne plus recevoir les ISBN du téléphone"><Smartphone size={16} />Téléphone relié<X size={14} /></button>
+            : <button onClick={() => phoneOpen('isbn')} title="Lire les codes-barres avec l’appareil photo du téléphone"><ScanLine size={16} />Téléphone</button>}
         </div>
         <div className="topmeta">
           <span>{data?.stats.books ?? 0} livres</span><span>{data?.stats.lent ?? 0} prêts en cours</span>
@@ -548,25 +594,45 @@ export default function App() {
               : <input required={k === 'title'} autoFocus={k === 'title'} placeholder={k === 'rangement' ? 'Salon › É2 › B3 › R2' : undefined} value={form.data[k] || ''} onChange={e => setForm({ ...form, data: { ...form.data, [k]: e.target.value } })} />}
         </label>)}</div>
         <div className="formcover">
-          <div className="bigcover">{form.cover ? <img src={form.cover} /> : <BookOpen size={50} />}</div>
+          {crop.on && form.cover
+            ? <div className="bigcover cropping"><span className="cropbox" onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); cropStart.current = cropPoint(e); setCrop({ on: true, box: null }) }}
+                onPointerMove={cropMove} onPointerUp={() => { cropStart.current = null }}>
+                <img src={form.cover} draggable={false} />
+                {crop.box && <span className="cropsel" style={{ left: `${crop.box[0] * 100}%`, top: `${crop.box[1] * 100}%`, width: `${(crop.box[2] - crop.box[0]) * 100}%`, height: `${(crop.box[3] - crop.box[1]) * 100}%` }} />}
+              </span></div>
+            : <div className="bigcover">{form.cover ? <img src={form.cover} /> : <BookOpen size={50} />}</div>}
+          {form.cover && (crop.on
+            ? <div className="adjust"><span className="muted">Tracez un cadre sur la couverture.</span>
+                <button type="button" className="primary" disabled={!crop.box} onClick={() => adjust('crop', crop.box)}><Check size={15} />Valider</button>
+                <button type="button" onClick={() => setCrop({ on: false, box: null })}>Annuler</button></div>
+            : <div className="adjust">
+                <button type="button" title="Tourner à gauche" onClick={() => adjust('left')}><RotateCcw size={15} /></button>
+                <button type="button" title="Tourner à droite" onClick={() => adjust('right')}><RotateCw size={15} /></button>
+                <button type="button" title="Retirer les bords autour du livre" onClick={() => adjust('auto')}><Crop size={15} />Auto</button>
+                <button type="button" title="Tracer le cadre à la main" onClick={() => setCrop({ on: true, box: null })}><Crop size={15} />Recadrer</button>
+                <button type="button" title="Corriger le contraste et les couleurs" onClick={() => adjust('enhance')}><Sparkles size={15} />Améliorer</button>
+              </div>)}
           <label className="sidebutton formbutton"><ImageIcon size={15} />Changer la jaquette…<input type="file" accept="image/*" onChange={async e => { const f = e.target.files?.[0]; if (f) { const img = await readImage(f); setForm(x => x && { ...x, cover: img, coverData: img }) } }} /></label>
           <button type="button" disabled={busy} onClick={() => searchCovers(form.data.isbn || '', form.data.title || '', form.data.authors || '', img => setForm(x => x && { ...x, cover: img, coverData: img }))}><Search size={15} />Rechercher une jaquette…</button>
-          <button type="button" onClick={async () => { const p = await call(() => api().phone_start()); if (p) setPhone(p) }}><Smartphone size={15} />Photo avec le téléphone…</button>
+          <button type="button" onClick={() => phoneOpen('photo')}><Smartphone size={15} />Photo avec le téléphone…</button>
+          <button type="button" disabled={pending > 0} onClick={scanCover}><Printer size={15} />Numériser (scanner)…</button>
           <button type="button" disabled={busy} onClick={formRefreshInfo}><RefreshCw size={15} />Actualiser les informations</button>
         </div>
       </div>
       <div className="modalactions"><button type="button" onClick={() => { setForm(null); refocus() }}>Annuler</button><button className="primary" type="submit">Enregistrer</button></div>
     </form></div>}
 
-    {phone && <div className="modalback"><div className="modal compact phone">
-      <div className="modalhead"><h2>Photo avec le téléphone</h2><button type="button" onClick={() => { api().phone_stop(); setPhone(null) }}><X /></button></div>
-      <p className="muted">Le téléphone doit être sur le même réseau Wi-Fi que l'ordinateur. Visez ce code avec l'appareil photo du téléphone, ouvrez le lien proposé, puis photographiez la couverture. Vous pouvez reprendre la photo autant de fois que nécessaire.</p>
+    {phone && <div className="modalback phoneback"><div className="modal compact phone">
+      <div className="modalhead"><h2>{phone.kind === 'isbn' ? 'Scanner avec le téléphone' : 'Photo avec le téléphone'}</h2><button type="button" onClick={phoneClose}><X /></button></div>
+      <p className="muted">Le téléphone doit être sur le même réseau Wi-Fi que l'ordinateur. Visez ce code avec l'appareil photo du téléphone et ouvrez le lien proposé, puis {phone.kind === 'isbn'
+        ? 'photographiez le code-barres au dos du livre. Cette fenêtre se ferme au premier ISBN reçu ; continuez ensuite livre après livre, comme avec une douchette, selon le mode de scan choisi.'
+        : 'photographiez la couverture. Vous pouvez reprendre la photo autant de fois que nécessaire.'}</p>
       <div className="phoneqr">
         <img src={'data:image/svg+xml;utf8,' + encodeURIComponent(phone.qr)} alt={phone.url} />
-        {phone.image ? <img src={phone.image} alt="Photo reçue" /> : <div className="muted">En attente de la photo…</div>}
+        {phone.kind === 'photo' && (phone.image ? <img src={phone.image} alt="Photo reçue" /> : <div className="muted">En attente de la photo…</div>)}
       </div>
       <p className="muted"><small>{phone.url}</small></p>
-      <div className="modalactions"><button type="button" className="primary" onClick={() => { api().phone_stop(); setPhone(null) }}>{phone.image ? 'Terminé' : 'Fermer'}</button></div>
+      <div className="modalactions"><button type="button" className="primary" onClick={phoneClose}>{phone.image ? 'Terminé' : 'Fermer'}</button></div>
     </div></div>}
 
     {picker && <div className="modalback picker"><div className="modal">

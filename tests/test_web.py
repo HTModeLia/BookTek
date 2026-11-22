@@ -83,5 +83,47 @@ class TelephoneTest(unittest.TestCase):
         self.assertEqual(got, [b"JPEG"])
 
 
+@unittest.skipIf(web is None or web.Image is None, "pywebview ou Pillow absent")
+class JaquetteTest(unittest.TestCase):
+    """Retouche des jaquettes et téléphone utilisé comme scanner d'ISBN."""
+
+    def image(self, size=(300, 200), book=None):
+        import io
+        img = web.Image.new("RGB", size, (200, 190, 170))  # la table
+        if book:
+            img.paste((20, 40, 120), book)  # la couverture
+        buf = io.BytesIO()
+        img.save(buf, "JPEG")
+        return buf.getvalue()
+
+    def size(self, data):
+        import io
+        return web.Image.open(io.BytesIO(data)).size
+
+    def test_rotation_recadrage(self):
+        self.assertEqual(self.size(web.adjust_image(self.image(), "left")), (200, 300))
+        self.assertEqual(self.size(web.adjust_image(self.image(), "crop", [0.5, 0, 1, 0.5])), (150, 100))
+        with self.assertRaises(ValueError):
+            web.adjust_image(self.image(), "crop", [0.5, 0.5, 0.51, 0.9])
+
+    def test_recadrage_auto(self):
+        w, h = self.size(web.adjust_image(self.image(book=(100, 40, 220, 180)), "auto"))
+        self.assertTrue(110 <= w <= 125 and 130 <= h <= 145, (w, h))
+        with self.assertRaises(ValueError):  # rien à retirer
+            web.adjust_image(self.image(), "auto")
+
+    def test_isbn_par_telephone(self):
+        from test_barcode import ean13_image
+        api = web.Api(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(api._lib.con.close)
+        pushed = []
+        api._push = lambda kind, **data: pushed.append((kind, data))
+        self.assertIn("9782070368228", api._phone_isbn(ean13_image("9782070368228")))
+        self.assertEqual(pushed, [("phone_isbn", {"isbn": "9782070368228"})])
+        with self.assertRaises(ValueError):
+            api._phone_isbn(self.image())
+        self.assertIn("code-barres", web.phone_page("isbn"))
+
+
 if __name__ == "__main__":
     unittest.main()
