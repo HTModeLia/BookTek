@@ -12,7 +12,8 @@ Usage (depuis la racine du dépôt) ::
 2. vérifie que la copie de travail est propre, que la branche est ``main``,
    synchronisée avec ``origin``, et que le tag ``vx.y.z`` n'existe pas ;
 3. lance les tests unitaires ;
-4. construit l'interface (``npm run build`` dans ``web/``) puis ``dist/BookTek.exe`` avec PyInstaller ;
+4. construit l'interface (``npm run build`` dans ``web/``) puis ``dist/BookTek.exe`` avec PyInstaller,
+   et le signe avec le certificat « CN=BookTek » du magasin Windows s'il est présent (voir :func:`sign`) ;
 5. crée et pousse le tag, crée la release GitHub et y joint l'exe.
 
 Une fois la release publiée, les installations existantes la détectent et
@@ -22,6 +23,7 @@ Authentification : le jeton GitHub est lu dans le gestionnaire
 d'identifiants de Git (celui utilisé pour ``git push``), ou dans la variable
 d'environnement ``GITHUB_TOKEN``. Il n'est jamais affiché.
 """
+import glob
 import json
 import os
 import re
@@ -75,6 +77,23 @@ def api(url, data, content_type, tok):
         return json.load(resp)
 
 
+def sign():
+    """Signe ``EXE`` avec le certificat « CN=BookTek » du magasin Windows de l'utilisateur.
+
+    La signature précède l'envoi : l'empreinte SHA-256 vérifiée par l'updater est calculée par GitHub sur l'exe signé.
+    """
+    # shortcut: certificat auto-signé (tools/BookTek.cer), reconnu seulement là où il est installé, passer à un certificat reconnu (Certum, SignPath) pour supprimer l'avertissement SmartScreen
+    tools = sorted(glob.glob(r"C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\signtool.exe"))
+    if not tools:
+        print("signtool introuvable (Windows SDK) : exe non signé.")
+        return
+    res = subprocess.run([tools[-1], "sign", "/n", "BookTek", "/s", "My", "/fd", "SHA256",
+                          "/tr", "http://timestamp.digicert.com", "/td", "SHA256", EXE], capture_output=True, text=True)
+    if res.returncode:
+        sys.exit(f"Échec de la signature :\n{res.stdout}{res.stderr}")
+    print("Exécutable signé.")
+
+
 def main():
     dry = "--dry-run" in sys.argv
     ver = version()
@@ -107,6 +126,7 @@ def main():
         "--icon", os.path.join("booktek", "icon.ico"), "--add-data", f"{os.path.join('booktek', 'icon.ico')}{os.pathsep}booktek",
         "--add-data", f"{os.path.join('web', 'dist')}{os.pathsep}{os.path.join('web', 'dist')}",
         "--name", "BookTek", "--distpath", "dist", "--workpath", "build", "main.py", capture=True)
+    sign()
     size = os.path.getsize(EXE)
     print(f"{EXE} ({size / 1e6:.1f} Mo)")
 

@@ -7,6 +7,24 @@ Chaque release GitHub publiée est **immédiatement proposée à toutes les inst
 - Python 3.10 ou plus récent, PyInstaller et Pillow (`pip install pyinstaller pillow`). Pillow sert à afficher les couvertures, et le script refuse de construire l'exe sans lui.
 - Une clé d'API Google Books dans le fichier `booktek/_key.py`, sur une ligne : `GOOGLE_KEY = "votre-clé"`. Ce fichier est ignoré par git et ne doit jamais être commité. Il est embarqué dans l'exe : restreignez la clé à la seule API Books dans la console Google Cloud. Sans clé, les recherches Google partagent un quota anonyme presque toujours épuisé, et le script refuse de construire l'exe.
 - Des droits d'écriture sur le dépôt `HTModeLia/BookTek`, avec un `git push` qui fonctionne. Le script réutilise ces identifiants ; sinon, définissez la variable d'environnement `GITHUB_TOKEN`.
+- Pour signer l'exe : le Windows SDK (`signtool.exe`) et le certificat auto-signé « CN=BookTek » dans le magasin personnel de Windows (`Cert:\CurrentUser\My`). Sans signtool, l'exe est publié sans signature. Si signtool est présent mais que le certificat manque, le script s'arrête.
+
+## Signature de l'exe
+
+Le certificat est **auto-signé** et sa clé privée n'existe que sur le PC du mainteneur : sauvegardez-la (`certmgr.msc`, *Personnel › Certificats › BookTek*, *Exporter* avec la clé privée, en `.pfx` protégé par mot de passe). Pour le recréer sur un autre PC :
+
+```powershell
+New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=BookTek" -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(10)
+```
+
+Windows ne fait confiance à cette signature que sur les PC où la partie publique, `tools/BookTek.cer`, a été installée, dans une invite PowerShell **administrateur** :
+
+```powershell
+Import-Certificate -FilePath BookTek.cer -CertStoreLocation Cert:\LocalMachine\Root
+Import-Certificate -FilePath BookTek.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+```
+
+Ailleurs, l'exe reste signalé comme d'éditeur inconnu par SmartScreen. Seul un certificat reconnu (Certum, SignPath Foundation…) supprime cet avertissement partout.
 
 ## Procédure
 
