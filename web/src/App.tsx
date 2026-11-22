@@ -554,6 +554,10 @@ export default function App() {
           <button className="toggle" role="switch" aria-checked={!!data?.settings.verbose_log} onClick={() => setting('verbose_log', !data?.settings.verbose_log)}><FileText />Journal détaillé (dépannage)<i className={`track${data?.settings.verbose_log ? ' on' : ''}`} /></button>
           <button onClick={() => call(() => api().open_log())}><FileText />Ouvrir le journal</button>
         </div>
+        <h2>Sécurité</h2>
+        <div className="toolgrid">
+          <button onClick={async () => { if (await call(async () => { await api().install_certificate(); return true })) setStatus('Certificat installé : Windows reconnaît désormais BookTek.', 'ok') }}><ShieldCheck />Installer le certificat de BookTek</button>
+        </div>
       </section>}
 
       {section === 'backups' && <section className="fullpanel backup-panel">

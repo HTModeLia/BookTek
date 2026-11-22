@@ -5,6 +5,7 @@ Les sections de ce fichier servent de notes de version : `tools/release.py` publ
 ## [1.18.0] - 2026-11-22
 
 ### Ajouts
+- Dans **Outils**, rubrique **Sécurité**, le bouton **Installer le certificat de BookTek** fait reconnaître BookTek par Windows : après avoir répondu **Oui** à la question de Windows, BookTek n'est plus présenté comme venant d'un éditeur inconnu.
 - **Le téléphone comme douchette** : le bouton **Téléphone**, à côté du champ ISBN, affiche un QR code. Visez-le avec le téléphone (sur le même Wi-Fi), puis photographiez le code-barres au dos de chaque livre : l'ISBN arrive dans BookTek comme avec une douchette, selon le mode de scan choisi. Le bouton vert **Téléphone relié** arrête la liaison.
 - **Numériser (scanner)…** dans la fiche d'un livre : posez le livre sur la vitre de votre imprimante multifonction (Epson ou autre, branchée en USB ou en Wi-Fi) et numérisez la couverture avec la fenêtre de numérisation de Windows. L'image arrive directement dans la fiche.
 - **Retoucher la jaquette** dans la fiche, sous l'image : tourner à gauche ou à droite, **Auto** pour retirer les bords autour du livre, **Recadrer** pour tracer le cadre à la main, **Améliorer** pour corriger le contraste et les couleurs. Les retouches sont gardées avec **Enregistrer**.

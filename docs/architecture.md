@@ -22,10 +22,11 @@ booktek/
 ├── bkc_import.py       lecture des fichiers Book Collector
 ├── backup.py           sauvegardes ZIP (base + jaquettes), rotation, restauration
 ├── barcode.py          lecture d'un code-barres EAN-13 (ISBN) sur une photo, Pillow seul
+├── BookTek.cer         partie publique du certificat auto-signé de l'exe (Outils › Installer le certificat)
 ├── icon.ico            icône (exe et fenêtres), générée par tools/make_icon.py
 └── updater.py          mise à jour automatique
 tests/                  tests unitaires (unittest)
-tools/release.py        publication d'une version (embarque icon.ico : --icon et --add-data)
+tools/release.py        publication d'une version (embarque icon.ico et BookTek.cer : --icon et --add-data ; signe l'exe)
 tools/make_icon.py      dessin de l'icône avec Pillow ; à relancer après modification
 ```
 

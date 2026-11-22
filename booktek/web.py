@@ -679,6 +679,19 @@ class Api:
             raise ValueError("Le journal est vide pour l'instant.")
         os.startfile(self._log_path)
 
+    def install_certificate(self):
+        """Fait reconnaître la signature de BookTek par Windows, pour l'utilisateur courant (sans droits administrateur).
+
+        Installe ``BookTek.cer`` (certificat auto-signé, voir docs/publier-une-version.md) dans les autorités
+        racines, ce que Windows fait confirmer, puis dans les éditeurs approuvés.
+        """
+        cer = os.path.join(os.path.dirname(os.path.abspath(__file__)), "BookTek.cer")
+        for store in ("Root", "TrustedPublisher"):
+            res = subprocess.run(["certutil", "-user", "-f", "-addstore", store, cer], capture_output=True,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if res.returncode:
+                raise ValueError("Le certificat n'a pas été installé (installation annulée ou refusée).")
+
     def open_url(self, url):
         if url.startswith("https://"):
             webbrowser.open(url)

@@ -17,7 +17,7 @@ Le certificat est **auto-signé** et sa clé privée n'existe que sur le PC du m
 New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=BookTek" -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(10)
 ```
 
-Windows ne fait confiance à cette signature que sur les PC où la partie publique, `tools/BookTek.cer`, a été installée, dans une invite PowerShell **administrateur** :
+Windows ne fait confiance à cette signature que sur les PC où la partie publique, `booktek/BookTek.cer` (embarquée dans l'exe), a été installée. Pour l'utilisateur courant, c'est le bouton **Outils › Sécurité › Installer le certificat de BookTek** (`certutil -user`, Windows demande confirmation). Pour tous les comptes du PC, dans une invite PowerShell **administrateur** :
 
 ```powershell
 Import-Certificate -FilePath BookTek.cer -CertStoreLocation Cert:\LocalMachine\Root

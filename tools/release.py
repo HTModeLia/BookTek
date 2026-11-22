@@ -82,7 +82,7 @@ def sign():
 
     La signature précède l'envoi : l'empreinte SHA-256 vérifiée par l'updater est calculée par GitHub sur l'exe signé.
     """
-    # shortcut: certificat auto-signé (tools/BookTek.cer), reconnu seulement là où il est installé, passer à un certificat reconnu (Certum, SignPath) pour supprimer l'avertissement SmartScreen
+    # shortcut: certificat auto-signé (booktek/BookTek.cer), reconnu seulement là où il est installé, passer à un certificat reconnu (Certum, SignPath) pour supprimer l'avertissement SmartScreen
     tools = sorted(glob.glob(r"C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\signtool.exe"))
     if not tools:
         print("signtool introuvable (Windows SDK) : exe non signé.")
@@ -124,6 +124,7 @@ def main():
     print("Construction de l'exécutable…")
     run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
         "--icon", os.path.join("booktek", "icon.ico"), "--add-data", f"{os.path.join('booktek', 'icon.ico')}{os.pathsep}booktek",
+        "--add-data", f"{os.path.join('booktek', 'BookTek.cer')}{os.pathsep}booktek",
         "--add-data", f"{os.path.join('web', 'dist')}{os.pathsep}{os.path.join('web', 'dist')}",
         "--name", "BookTek", "--distpath", "dist", "--workpath", "build", "main.py", capture=True)
     sign()
